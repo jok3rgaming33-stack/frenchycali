@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Inter", "Inter Fallback", system-ui, sans-serif;
+  --font-display: "Orbitron", "Orbitron Fallback", sans-serif;
+
+  /* Base */
+  --color-background: #0f0d07;
+  --color-foreground: #f5e8c7;
+  --color-card: rgba(20, 18, 12, 0.88);
+  --color-card-foreground: #f5e8c7;
+  --color-border: rgba(255, 202, 40, 0.14);
+  --color-muted: rgba(201, 167, 108, 0.5);
+  --color-muted-foreground: #c9a76c;
+  --color-secondary: rgba(255, 202, 40, 0.06);
+  --color-secondary-foreground: #f5e8c7;
+  --color-popover: #18160e;
+  --color-popover-foreground: #f5e8c7;
+
+  /* Brand — CaliPack (31/94) */
+  --color-accent: #ffca28;
+  --color-accent-foreground: #0f0d07;
+  --color-primary: #ffca28;
+  --color-primary-foreground: #0f0d07;
+  --color-primary-dark: #ffaa00;
+  --color-brand-orange: #e65100;
+  --color-glow: rgba(255, 202, 40, 0.4);
+
+  /* CaliDelivery override (applied via .theme-delivery class) */
+  --color-delivery-bg: #0a0012;
+  --color-delivery-primary: #8b00ff;
+  --color-delivery-accent: #00ff9d;
+  --color-delivery-border: rgba(0, 255, 170, 0.16);
+
+  /* Radius */
+  --radius: 0.75rem;
+
+  /* Destructive */
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #fff;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background-color: var(--color-background);
+}
+
+body {
+  margin: 0;
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 202, 40, 0.25); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 202, 40, 0.45); }
+
+/* Orbitron headings */
+.font-display { font-family: var(--font-display); }
+
+/* CaliDelivery theme */
+.theme-delivery {
+  --color-background: #0a0012;
+  --color-foreground: #f0f8ff;
+  --color-card: #12001f;
+  --color-border: rgba(0, 255, 170, 0.16);
+  --color-accent: #00ff9d;
+  --color-accent-foreground: #0a0012;
+  --color-primary: #8b00ff;
+  --color-primary-foreground: #fff;
+  --color-muted-foreground: rgba(176, 168, 208, 0.8);
+  --color-glow: rgba(0, 255, 170, 0.4);
+}
+
+/* Glow helpers */
+.glow-gold { box-shadow: 0 0 20px var(--color-glow); }
+.glow-gold-text {
+  background: linear-gradient(90deg, var(--color-accent), var(--color-brand-orange));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.glow-delivery-text {
+  background: linear-gradient(90deg, #8b00ff, #00ff9d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Canvas particles — always behind everything */
+#particles-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}

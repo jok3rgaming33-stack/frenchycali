@@ -1,344 +1,391 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { createAccount, getAccount } from "@/app/actions/account"
+import { useState, useEffect } from "react"
+import { Copy, CheckCircle2, Loader2, KeyRound, Fingerprint, ScanFace, Eye, EyeOff, AlertTriangle, X } from "lucide-react"
+import { createAccount, getCustomerStats } from "@/app/actions/account"
+import { resolveClientLogin } from "@/app/actions/staff"
+import { adminLogin } from "@/app/actions/admin-auth"
+import { verifyHuman } from "@/app/actions/security"
+import { submitLostKeyClaim } from "@/app/actions/lost-key"
 import {
-  startWebAuthnAuthentication,
-  finishWebAuthnAuthentication,
-  startWebAuthnRegistration,
-  finishWebAuthnRegistration,
+  startWebAuthnRegistration, finishWebAuthnRegistration,
+  startWebAuthnAuthentication, finishWebAuthnAuthentication,
 } from "@/app/actions/webauthn"
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
+import { loadWebAuthnBrowser } from "@/lib/webauthn-browser"
+import {
+  biometryLabel, clearLocalWebAuthn, getLocalCredentialIds,
+  hasLocalWebAuthn, platformAuthenticatorAvailable, rememberLocalCredential,
+} from "@/lib/webauthn-client"
 
-const CALI_LOGO = "https://i.imgur.com/amjflPT.jpeg"
-const CALI_LOGO_TEAM = "https://i.imgur.com/1gye7hI.jpeg"
-
-const LS_TOKEN = "cali_token"
-const LS_PSEUDO = "cali_pseudo"
-const LS_BIOMETRIC_IDS = "cali_biometric_ids"
-
-interface LoginPageProps {
-  redirectTo?: string
-  shopName?: string
-  shopLogo?: string
+interface Props {
+  onSuccess: (opts?: { openOrders?: boolean }) => void
+  shop: "caliboyz31" | "caliboyz94" | "calidelivery"
 }
 
-export default function LoginPage({ redirectTo = "/choix", shopName = "CaliPack", shopLogo }: LoginPageProps) {
-  const router = useRouter()
-  const [mode, setMode] = useState<"auto" | "create" | "login" | "biometric">("auto")
-  const [token, setToken] = useState("")
-  const [pseudo, setPseudo] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [biometricAvailable, setBiometricAvailable] = useState(false)
+export function LoginPage({ onSuccess, shop }: Props) {
+  const isDelivery = shop === "calidelivery"
+
+  // Theme-aware style helpers
+  const accentGrad = isDelivery
+    ? "linear-gradient(90deg,#8b00ff,#00ff9d)"
+    : "linear-gradient(90deg,#ffca28,#e65100)"
+  const btnStyle: React.CSSProperties = isDelivery
+    ? { background: "linear-gradient(120deg,#8b00ff,#00ff9d)", color: "#000814" }
+    : { background: "linear-gradient(120deg,#ffca28,#e65100)", color: "#0f0d07" }
+  const cardBorder = isDelivery
+    ? "1px solid rgba(0,255,170,0.18)"
+    : "1px solid rgba(255,202,40,0.18)"
+  const cardShadow = isDelivery
+    ? "0 0 35px rgba(0,255,170,0.35),0 32px 80px rgba(0,0,0,0.85)"
+    : "0 0 35px rgba(255,202,40,0.3),0 32px 80px rgba(0,0,0,0.85)"
+  const cardBg = isDelivery ? "#12001f" : "rgba(20,18,12,0.92)"
+  const inputBorder = isDelivery ? "rgba(0,255,170,0.2)" : "rgba(255,202,40,0.18)"
+  const inputFocusBorder = isDelivery ? "#00ff9d" : "#ffca28"
+
+  // States
+  const [tab, setTab] = useState<"create" | "login">("create")
+  const [showKey, setShowKey] = useState(false)
+  const [loginInput, setLoginInput] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [loggingIn, setLoggingIn] = useState(false)
+  const [generatedKey, setGeneratedKey] = useState("")
+  const [generatedPseudo, setGeneratedPseudo] = useState("")
+  const [showResultModal, setShowResultModal] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState("")
+  const [errorCreate, setErrorCreate] = useState("")
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [stats, setStats] = useState<{ points: number; active: number; past: number } | null>(null)
+  // Bio
+  const [bioAvailable, setBioAvailable] = useState(false)
+  const [bioReady, setBioReady] = useState(false)
+  const [bioBusy, setBioBusy] = useState(false)
+  const [bioError, setBioError] = useState("")
+  const [bioEnrolling, setBioEnrolling] = useState(false)
+  const [bioEnrollMsg, setBioEnrollMsg] = useState<string | null>(null)
+  // Lost key
+  const [showLostKey, setShowLostKey] = useState(false)
+  const [lostKeyPseudo, setLostKeyPseudo] = useState("")
+  const [lostKeyMsg, setLostKeyMsg] = useState("")
+  const [lostKeySubmitting, setLostKeySubmitting] = useState(false)
+  const [lostKeyDone, setLostKeyDone] = useState(false)
 
   useEffect(() => {
-    const storedToken = localStorage.getItem(LS_TOKEN)
-    const storedPseudo = localStorage.getItem(LS_PSEUDO)
-    const biometricIds = JSON.parse(localStorage.getItem(LS_BIOMETRIC_IDS) || "[]") as string[]
-
-    if (storedToken && biometricIds.length > 0) {
-      setBiometricAvailable(true)
-      setMode("biometric")
-    } else if (storedToken) {
-      handleAutoLogin(storedToken, storedPseudo || "")
-    }
-    // Check biometric support
-    if (window.PublicKeyCredential) {
-      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.().then(setBiometricAvailable).catch(() => {})
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setBioReady(hasLocalWebAuthn())
+    ;(async () => {
+      try {
+        const api = await loadWebAuthnBrowser()
+        if (!api?.browserSupportsWebAuthn()) return
+        setBioAvailable(await platformAuthenticatorAvailable())
+      } catch { /* ignore */ }
+    })()
   }, [])
 
-  const handleAutoLogin = useCallback(async (t: string, p: string) => {
-    setLoading(true)
-    try {
-      const acc = await getAccount(t)
-      if (acc) {
-        localStorage.setItem(LS_TOKEN, t)
-        localStorage.setItem(LS_PSEUDO, acc.pseudo)
-        router.push(redirectTo)
-      } else {
-        setMode("login")
-        setLoading(false)
-      }
-    } catch {
-      setMode("login")
-      setLoading(false)
-    }
-  }, [router, redirectTo])
+  const generatePseudo = () => {
+    const a = ["Cool","Fast","Zen","Bold","Wild","Slick","Sharp","Dark"]
+    const n = ["Cat","Fox","Bear","Wolf","Hawk","Lynx","Ghost","Storm"]
+    return a[Math.floor(Math.random()*a.length)] + n[Math.floor(Math.random()*n.length)]
+  }
 
-  const handleBiometricLogin = async () => {
-    setLoading(true)
-    setError(null)
+  const generateKey = () => {
+    const arr = new Uint8Array(32); crypto.getRandomValues(arr)
+    return btoa(String.fromCharCode(...arr)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")
+  }
+
+  const createAnonymousAccess = async () => {
+    if (creating) return
+    setCreating(true); setErrorCreate("")
+    const pseudo = generatePseudo(); const key = generateKey()
     try {
-      const biometricIds = JSON.parse(localStorage.getItem(LS_BIOMETRIC_IDS) || "[]") as string[]
-      const startRes = await startWebAuthnAuthentication(biometricIds)
+      const human = await verifyHuman("unavailable")
+      if (!human.ok) { setErrorCreate(human.error ?? "Vérification échouée."); return }
+      const res = await createAccount(key, pseudo)
+      if (!res.ok) { setErrorCreate(res.error ?? "Impossible de créer le compte."); return }
+      const finalPseudo = res.pseudo ?? pseudo
+      setGeneratedKey(key); setGeneratedPseudo(finalPseudo)
+      localStorage.setItem("authToken", key); localStorage.setItem("userPseudo", finalPseudo)
+      localStorage.removeItem("isAdmin")
+      setShowResultModal(true)
+    } catch { setErrorCreate("Impossible de créer le compte. Réessaie.") }
+    finally { setCreating(false) }
+  }
+
+  const loginWithKey = async () => {
+    const token = loginInput.trim()
+    if (token.length < 30) { setError("Clé secrète trop courte."); return }
+    if (loggingIn) return
+    setError(""); setBioError(""); setLoggingIn(true)
+    try {
+      const adminRes = await adminLogin(token)
+      if (adminRes.ok) {
+        localStorage.setItem("authToken", token); localStorage.setItem("isAdmin","1")
+        window.location.href = "/admin"; return
+      }
+      const resolved = await resolveClientLogin(token)
+      if (!resolved.ok) { setError("Clé secrète invalide ou compte inexistant."); return }
+      localStorage.removeItem("isAdmin")
+      localStorage.setItem("authToken", resolved.token!); localStorage.setItem("userPseudo", resolved.pseudo!)
+      setGeneratedPseudo(resolved.pseudo!); setIsLoggedIn(true)
+    } catch { setError("Connexion impossible. Réessaie.") }
+    finally { setLoggingIn(false) }
+  }
+
+  const loginWithBiometry = async () => {
+    if (bioBusy) return
+    setBioBusy(true); setBioError("")
+    try {
+      const api = await loadWebAuthnBrowser()
+      if (!api) { setBioError("Biométrie indisponible."); return }
+      const ids = getLocalCredentialIds()
+      const startRes = await startWebAuthnAuthentication(ids.length ? ids : undefined)
       if (!startRes.ok) {
-        if (startRes.clearLocal) localStorage.removeItem(LS_BIOMETRIC_IDS)
-        setError(startRes.error)
-        setMode("login")
-        setLoading(false)
-        return
+        if (startRes.clearLocal) clearLocalWebAuthn()
+        setBioError(startRes.error); return
       }
-      const authResponse = await startAuthentication({ optionsJSON: startRes.options })
-      const finishRes = await finishWebAuthnAuthentication({ challengeId: startRes.challengeId, response: authResponse })
+      const response = await api.startAuthentication({ optionsJSON: startRes.options })
+      const finishRes = await finishWebAuthnAuthentication({ challengeId: startRes.challengeId, response: response as any })
       if (!finishRes.ok) {
-        if (finishRes.clearLocal) localStorage.removeItem(LS_BIOMETRIC_IDS)
-        setError(finishRes.error)
-        setLoading(false)
-        return
+        if (finishRes.clearLocal) clearLocalWebAuthn()
+        setBioError(finishRes.error); return
       }
-      localStorage.setItem(LS_TOKEN, finishRes.token)
-      localStorage.setItem(LS_PSEUDO, finishRes.pseudo)
-      router.push(redirectTo)
+      localStorage.setItem("authToken", finishRes.token); localStorage.setItem("userPseudo", finishRes.pseudo)
+      localStorage.removeItem("isAdmin")
+      setGeneratedPseudo(finishRes.pseudo); setIsLoggedIn(true)
     } catch (e: any) {
-      setError(e?.message || "Biométrie annulée.")
-      setLoading(false)
-    }
+      if (e?.name === "NotAllowedError") setBioError("Annulé ou délai dépassé.")
+      else setBioError("Biométrie indisponible.")
+    } finally { setBioBusy(false) }
   }
 
-  const handleCreate = async () => {
-    if (!token.trim() || !pseudo.trim()) { setError("Remplis tous les champs."); return }
-    if (token.trim().length < 20) { setError("Ta clé secrète doit faire au moins 20 caractères."); return }
-    setLoading(true); setError(null)
-    const res = await createAccount(token.trim(), pseudo.trim())
-    if (!res.ok) { setError(res.error); setLoading(false); return }
-    localStorage.setItem(LS_TOKEN, token.trim())
-    localStorage.setItem(LS_PSEUDO, res.pseudo)
-    // Try to register biometric right after account creation
-    await tryRegisterBiometric(token.trim())
-    router.push(redirectTo)
-  }
-
-  const handleLogin = async () => {
-    if (!token.trim()) { setError("Saisis ta clé secrète."); return }
-    setLoading(true); setError(null)
-    const acc = await getAccount(token.trim())
-    if (!acc) { setError("Clé secrète invalide ou compte introuvable."); setLoading(false); return }
-    localStorage.setItem(LS_TOKEN, token.trim())
-    localStorage.setItem(LS_PSEUDO, acc.pseudo)
-    await tryRegisterBiometric(token.trim())
-    router.push(redirectTo)
-  }
-
-  const tryRegisterBiometric = async (userToken: string) => {
-    if (!window.PublicKeyCredential) return
+  const enrollBiometry = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+    if (!token) return
+    setBioEnrolling(true); setBioEnrollMsg(null)
     try {
-      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.()
-      if (!available) return
-      const startRes = await startWebAuthnRegistration(userToken)
-      if (!startRes.ok) return
-      const regResponse = await startRegistration({ optionsJSON: startRes.options })
-      const finishRes = await finishWebAuthnRegistration({ userToken, challengeId: startRes.challengeId, response: regResponse })
-      if (finishRes.ok) {
-        const existing = JSON.parse(localStorage.getItem(LS_BIOMETRIC_IDS) || "[]") as string[]
-        const updated = [...new Set([...existing, finishRes.credentialId])]
-        localStorage.setItem(LS_BIOMETRIC_IDS, JSON.stringify(updated))
-      }
-    } catch { /* silent — biométrie optionnelle */ }
+      const api = await loadWebAuthnBrowser()
+      if (!api) { setBioEnrollMsg("Biométrie non disponible sur cet appareil."); return }
+      const startRes = await startWebAuthnRegistration(token)
+      if (!startRes.ok) { setBioEnrollMsg(startRes.error); return }
+      const response = await api.startRegistration({ optionsJSON: startRes.options })
+      const finishRes = await finishWebAuthnRegistration({ userToken: token, challengeId: startRes.challengeId, response: response as any })
+      if (!finishRes.ok) { setBioEnrollMsg(finishRes.error); return }
+      rememberLocalCredential(finishRes.credentialId); setBioReady(true)
+      setBioEnrollMsg(`${biometryLabel()} activé avec succès.`)
+    } catch (e: any) {
+      setBioEnrollMsg(e?.name === "NotAllowedError" ? "Activation annulée." : "Activation impossible.")
+    } finally { setBioEnrolling(false) }
   }
 
-  const storedPseudo = typeof window !== "undefined" ? localStorage.getItem(LS_PSEUDO) : null
-
-  if (loading && mode === "auto") {
-    return (
-      <div style={styles.overlay}>
-        <div style={styles.spinner} />
-      </div>
-    )
+  const copyKey = async () => {
+    await navigator.clipboard.writeText(generatedKey); setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
   }
 
-  return (
-    <div style={styles.page}>
-      <canvas id="login-particles" style={styles.canvas} />
-      <div style={styles.card}>
-        <img src={shopLogo || CALI_LOGO_TEAM} alt={shopName} style={styles.logo} />
-        <h1 style={styles.title}>{shopName}</h1>
-        <p style={styles.sub}>Accès sécurisé</p>
+  useEffect(() => {
+    if (!isLoggedIn) return
+    const token = localStorage.getItem("authToken")
+    if (!token) return
+    getCustomerStats(token).then(setStats).catch(() => {})
+  }, [isLoggedIn])
 
-        {error && <div style={styles.errorBox}>{error}</div>}
-        {success && <div style={styles.successBox}>{success}</div>}
+  const logo = isDelivery ? "https://i.imgur.com/K6NwuvJ.png" : "https://i.imgur.com/1gye7hI.jpeg"
+  const shopLabel = shop === "caliboyz31" ? "Cali Boyz 31" : shop === "caliboyz94" ? "Cali Boyz 94" : "CaliDelivery"
 
-        {mode === "biometric" && (
-          <>
-            <p style={styles.hint}>
-              Bienvenue, <strong>{storedPseudo || "…"}</strong>
-            </p>
-            <button style={styles.btnPrimary} onClick={handleBiometricLogin} disabled={loading}>
-              {loading ? "Vérification…" : "Déverrouiller (Face ID / Empreinte)"}
+  // --- SUCCESS MODAL (key display) ---
+  if (showResultModal) return (
+    <div style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", padding:"16px" }}>
+      <div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:"400px", background:cardBg, border:cardBorder, borderRadius:"24px", padding:"32px 24px", boxShadow:cardShadow }}>
+        <div style={{ textAlign:"center", marginBottom:"24px" }}>
+          <CheckCircle2 style={{ margin:"0 auto 12px", width:48, height:48, color:"#4ade80" }} />
+          <h2 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:"18px", fontWeight:900, textTransform:"uppercase", letterSpacing:"0.2em", background:accentGrad, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Compte créé !</h2>
+          <p style={{ margin:"8px 0 0", fontSize:"14px", color:"rgba(200,190,170,0.8)" }}>Pseudo : <strong style={{ color:"#f5e8c7" }}>{generatedPseudo}</strong></p>
+        </div>
+        <div style={{ marginBottom:"16px", borderRadius:"16px", border:"1px solid rgba(245,158,11,0.35)", background:"rgba(245,158,11,0.08)", padding:"16px" }}>
+          <p style={{ margin:"0 0 8px", fontSize:"11px", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"#fbbf24" }}>Ta clé secrète — NOTE-LA !</p>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <code style={{ flex:1, wordBreak:"break-all", borderRadius:"10px", background:"rgba(0,0,0,0.4)", padding:"8px 10px", fontSize:"11px", color:"#f5e8c7" }}>{generatedKey}</code>
+            <button onClick={copyKey} style={{ flexShrink:0, borderRadius:"10px", background:copied?"rgba(74,222,128,0.2)":"rgba(255,202,40,0.15)", border:"none", padding:8, cursor:"pointer" }}>
+              {copied ? <CheckCircle2 style={{ width:16, height:16, color:"#4ade80" }} /> : <Copy style={{ width:16, height:16, color:"#ffca28" }} />}
             </button>
-            <button style={styles.btnGhost} onClick={() => setMode("login")}>
-              Utiliser ma clé secrète
-            </button>
-          </>
-        )}
-
-        {(mode === "login" || mode === "create") && (
-          <>
-            <div style={styles.tabs}>
-              <button
-                style={{ ...styles.tab, ...(mode === "login" ? styles.tabActive : {}) }}
-                onClick={() => { setMode("login"); setError(null) }}
-              >
-                Me connecter
-              </button>
-              <button
-                style={{ ...styles.tab, ...(mode === "create" ? styles.tabActive : {}) }}
-                onClick={() => { setMode("create"); setError(null) }}
-              >
-                Créer un compte
-              </button>
-            </div>
-
-            {mode === "create" && (
-              <div style={styles.field}>
-                <label style={styles.label}>Mon pseudo</label>
-                <input
-                  style={styles.input}
-                  value={pseudo}
-                  onChange={(e) => setPseudo(e.target.value)}
-                  placeholder="Choisis un pseudo unique"
-                  autoComplete="off"
-                />
-              </div>
-            )}
-
-            <div style={styles.field}>
-              <label style={styles.label}>Clé secrète</label>
-              <input
-                style={styles.input}
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder={mode === "create" ? "Invente une clé secrète (20+ car.)" : "Saisis ta clé secrète"}
-                autoComplete="off"
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) mode === "create" ? handleCreate() : handleLogin() }}
-              />
-              {mode === "create" && (
-                <p style={styles.hint2}>
-                  Note ta clé secrète précieusement — elle est la seule façon de retrouver ton compte.
-                </p>
-              )}
-            </div>
-
-            <button
-              style={styles.btnPrimary}
-              onClick={mode === "create" ? handleCreate : handleLogin}
-              disabled={loading}
-            >
-              {loading ? "Chargement…" : mode === "create" ? "Créer mon compte" : "Accéder"}
-            </button>
-
-            {biometricAvailable && mode === "login" && (
-              <button style={styles.btnGhost} onClick={() => setMode("biometric")}>
-                Utiliser Face ID / empreinte
-              </button>
-            )}
-          </>
-        )}
-
-        <button
-          style={styles.btnRecovery}
-          onClick={() => router.push("/recuperation")}
-        >
-          Clé perdue ? Récupérer mon compte
+          </div>
+        </div>
+        <p style={{ margin:"0 0 20px", textAlign:"center", fontSize:"12px", color:"rgba(200,190,170,0.7)" }}>Sans cette clé, l&apos;accès à ton compte sera définitivement perdu.</p>
+        <button onClick={() => { setShowResultModal(false); setIsLoggedIn(true) }}
+          style={{ ...btnStyle, width:"100%", padding:"14px", borderRadius:"999px", border:"none", fontSize:"14px", fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", cursor:"pointer" }}>
+          Continuer
         </button>
       </div>
-      <ParticleCanvas />
     </div>
   )
-}
 
-function ParticleCanvas() {
-  useEffect(() => {
-    const canvas = document.getElementById("login-particles") as HTMLCanvasElement
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    let particles: { x: number; y: number; vx: number; vy: number; size: number; color: string }[] = []
-    let mx = 0, my = 0, raf = 0
+  // --- LOGGED IN DASHBOARD ---
+  if (isLoggedIn) return (
+    <div style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", padding:"16px" }}>
+      <div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:"400px", background:cardBg, border:cardBorder, borderRadius:"24px", padding:"32px 24px", boxShadow:cardShadow }}>
+        <div style={{ textAlign:"center", marginBottom:"24px" }}>
+          <CheckCircle2 style={{ margin:"0 auto 12px", width:40, height:40, color:"#4ade80" }} />
+          <h2 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:"18px", fontWeight:900, textTransform:"uppercase", letterSpacing:"0.15em", background:accentGrad, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Connecté</h2>
+          <p style={{ margin:"6px 0 0", fontSize:"14px", color:"rgba(200,190,170,0.8)" }}>Bienvenue, <strong style={{ color:"#f5e8c7" }}>{generatedPseudo}</strong></p>
+        </div>
+        {stats && (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
+            {[
+              { label:"Points fidélité", value:stats.points, accent:true },
+              { label:"Commandes actives", value:stats.active },
+              { label:"Passées", value:stats.past },
+            ].map((s) => (
+              <div key={s.label} style={{ borderRadius:14, border:"1px solid rgba(255,202,40,0.12)", background:"rgba(255,202,40,0.04)", padding:"12px 8px", textAlign:"center" }}>
+                <p style={{ margin:0, fontSize:20, fontWeight:700, color: s.accent ? "#ffca28" : "#f5e8c7" }}>{s.value}</p>
+                <p style={{ margin:"4px 0 0", fontSize:10, color:"rgba(200,190,170,0.7)", lineHeight:1.3 }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {bioAvailable && !bioReady && (
+          <div style={{ marginBottom:16, borderRadius:14, border:"1px solid rgba(255,202,40,0.12)", background:"rgba(255,202,40,0.04)", padding:14 }}>
+            <p style={{ margin:"0 0 8px", fontSize:12, color:"rgba(200,190,170,0.8)" }}>Activer le déverrouillage rapide sur cet appareil</p>
+            <button onClick={enrollBiometry} disabled={bioEnrolling} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"10px", borderRadius:12, border:"1px solid rgba(255,202,40,0.2)", background:"transparent", color:"#f5e8c7", fontSize:13, cursor:"pointer" }}>
+              {bioEnrolling ? <Loader2 style={{ width:14, height:14, animation:"spin 1s linear infinite" }} /> : <Fingerprint style={{ width:14, height:14, color:"#ffca28" }} />}
+              Activer {biometryLabel()}
+            </button>
+            {bioEnrollMsg && <p style={{ margin:"8px 0 0", textAlign:"center", fontSize:12, color:"#4ade80" }}>{bioEnrollMsg}</p>}
+          </div>
+        )}
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <button onClick={() => onSuccess({ openOrders: true })} style={{ width:"100%", padding:"12px", borderRadius:999, border:"1px solid rgba(255,202,40,0.2)", background:"transparent", color:"#f5e8c7", fontSize:13, fontWeight:500, cursor:"pointer" }}>
+            Mes commandes
+          </button>
+          <button onClick={() => onSuccess()} style={{ ...btnStyle, width:"100%", padding:"14px", borderRadius:999, border:"none", fontSize:13, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", cursor:"pointer" }}>
+            Voir le catalogue
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
-    function resize() {
-      canvas.width = window.innerWidth; canvas.height = window.innerHeight
-    }
-    function init() {
-      particles = []
-      const count = window.innerWidth < 768 ? 50 : 100
-      for (let i = 0; i < count; i++) {
-        particles.push({
-          x: Math.random() * canvas.width, y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5,
-          size: Math.random() * 2 + 1,
-          color: Math.random() > 0.5 ? "rgba(255,46,0,0.35)" : "rgba(255,149,0,0.3)",
-        })
-      }
-    }
-    function animate() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      for (const p of particles) {
-        const dx = mx - p.x, dy = my - p.y, dist = Math.hypot(dx, dy)
-        if (dist < 160) { const f = (160 - dist) / 160; p.vx -= dx * f * 0.03; p.vy -= dy * f * 0.03 }
-        p.x += p.vx; p.y += p.vy; p.vx *= 0.975; p.vy *= 0.975
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill()
-      }
-      raf = requestAnimationFrame(animate)
-    }
-    const onMouseMove = (e: MouseEvent) => { mx = e.clientX; my = e.clientY }
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("resize", () => { resize(); init() })
-    resize(); init(); animate()
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("mousemove", onMouseMove) }
-  }, [])
-  return null
-}
+  // --- MAIN LOGIN FORM ---
+  return (
+    <div style={{ display:"flex", minHeight:"100vh", alignItems:"center", justifyContent:"center", padding:"16px" }}>
+      <div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:"420px", background:cardBg, border:cardBorder, borderRadius:"26px", padding:"36px 28px", boxShadow:cardShadow }}>
+        {/* Logo */}
+        <div style={{ textAlign:"center", marginBottom:28 }}>
+          <img src={logo} alt={shopLabel} style={{ width:76, height:76, borderRadius:20, objectFit:"cover", boxShadow:"0 0 28px rgba(255,110,0,0.7)", marginBottom:14 }} />
+          <h1 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:22, fontWeight:900, textTransform:"uppercase", letterSpacing:"0.18em", background:accentGrad, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{shopLabel}</h1>
+          <p style={{ margin:"6px 0 0", fontSize:11, textTransform:"uppercase", letterSpacing:"0.14em", color:"rgba(200,190,170,0.7)" }}>Accès Sécurisé</p>
+        </div>
 
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-    background: "radial-gradient(circle at top left, rgba(255,60,0,0.2), transparent 60%), radial-gradient(circle at bottom right, rgba(255,149,0,0.18), transparent 60%), #0a0200",
-    fontFamily: "'Inter', system-ui, sans-serif", padding: "20px", position: "relative",
-  },
-  canvas: { position: "fixed", inset: 0, pointerEvents: "none", zIndex: 1 },
-  card: {
-    position: "relative", zIndex: 2, width: "100%", maxWidth: "440px",
-    background: "radial-gradient(circle at 0 0, rgba(255,140,0,0.18), transparent 55%), radial-gradient(circle at 100% 100%, rgba(255,40,0,0.2), transparent 55%), #140500",
-    border: "1px solid rgba(255,180,100,0.16)", borderRadius: "24px",
-    padding: "36px 28px 28px", boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
-    display: "flex", flexDirection: "column", alignItems: "center", gap: "12px",
-  },
-  logo: { width: "72px", height: "72px", borderRadius: "20px", objectFit: "cover", boxShadow: "0 0 24px rgba(255,110,0,0.8)", marginBottom: "4px" },
-  title: { margin: 0, fontSize: "22px", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: "#fffaf0", fontFamily: "'Orbitron', sans-serif" },
-  sub: { margin: 0, fontSize: "12px", color: "#d0b0a0", letterSpacing: "0.14em", textTransform: "uppercase" },
-  tabs: { display: "flex", width: "100%", borderRadius: "12px", background: "rgba(10,2,0,0.8)", border: "1px solid rgba(255,180,100,0.12)", overflow: "hidden" },
-  tab: { flex: 1, padding: "10px", background: "transparent", border: "none", color: "#d0b0a0", fontSize: "13px", cursor: "pointer", transition: "all 0.2s" },
-  tabActive: { background: "linear-gradient(135deg, rgba(255,40,0,0.4), rgba(255,140,0,0.4))", color: "#fffaf0", fontWeight: 600 },
-  field: { width: "100%", display: "flex", flexDirection: "column", gap: "6px" },
-  label: { fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.12em", color: "#d0b0a0" },
-  input: {
-    width: "100%", padding: "10px 14px", borderRadius: "12px", border: "1px solid rgba(255,180,100,0.18)",
-    background: "rgba(10,2,0,0.95)", color: "#fffaf0", fontSize: "14px", outline: "none",
-    boxSizing: "border-box", fontFamily: "inherit",
-  },
-  btnPrimary: {
-    width: "100%", padding: "13px", borderRadius: "999px", border: "none",
-    background: "linear-gradient(120deg, #ff2e00, #ff9500)", color: "#0f0100",
-    fontSize: "13px", fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase",
-    cursor: "pointer", boxShadow: "0 0 24px rgba(255,40,0,0.8)", transition: "all 0.2s",
-  },
-  btnGhost: {
-    width: "100%", padding: "10px", borderRadius: "999px", border: "1px solid rgba(255,180,100,0.22)",
-    background: "transparent", color: "#fffaf0", fontSize: "13px", cursor: "pointer",
-  },
-  btnRecovery: { background: "none", border: "none", color: "#d0b0a0", fontSize: "12px", cursor: "pointer", textDecoration: "underline", marginTop: "4px" },
-  errorBox: { width: "100%", padding: "10px 14px", borderRadius: "12px", background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)", color: "#fca5a5", fontSize: "13px" },
-  successBox: { width: "100%", padding: "10px 14px", borderRadius: "12px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", color: "#86efac", fontSize: "13px" },
-  hint: { margin: 0, fontSize: "14px", color: "#fffaf0", textAlign: "center" },
-  hint2: { margin: "4px 0 0", fontSize: "11px", color: "#d0b0a0", lineHeight: 1.5 },
-  overlay: { position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0200" },
-  spinner: { width: "40px", height: "40px", borderRadius: "50%", border: "3px solid rgba(255,180,100,0.2)", borderTopColor: "#ff9500", animation: "spin 0.8s linear infinite" },
+        {/* Biometry fast login */}
+        {bioAvailable && bioReady && (
+          <>
+            <button onClick={loginWithBiometry} disabled={bioBusy} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"13px", borderRadius:999, border:"1px solid rgba(255,202,40,0.22)", background:"rgba(255,202,40,0.06)", color:"#f5e8c7", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:4 }}>
+              {bioBusy ? <Loader2 style={{ width:16, height:16, animation:"spin 1s linear infinite" }} /> : <ScanFace style={{ width:16, height:16, color:"#ffca28" }} />}
+              Déverrouiller avec {biometryLabel()}
+            </button>
+            {bioError && <p style={{ margin:"4px 0 12px", textAlign:"center", fontSize:12, color:"#f87171" }}>{bioError}</p>}
+            <div style={{ display:"flex", alignItems:"center", gap:10, margin:"12px 0" }}>
+              <div style={{ flex:1, height:1, background:"rgba(255,202,40,0.12)" }} />
+              <span style={{ fontSize:11, color:"rgba(200,190,170,0.6)" }}>ou</span>
+              <div style={{ flex:1, height:1, background:"rgba(255,202,40,0.12)" }} />
+            </div>
+          </>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display:"flex", borderRadius:14, border:"1px solid rgba(255,202,40,0.12)", background:"rgba(255,202,40,0.04)", padding:4, marginBottom:20 }}>
+          {(["create","login"] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)} style={{ flex:1, padding:"9px 4px", borderRadius:11, border:"none", fontSize:13, fontWeight:600, cursor:"pointer", transition:"all 0.2s",
+              ...(tab===t ? { ...btnStyle, boxShadow:"0 2px 8px rgba(0,0,0,0.4)" } : { background:"transparent", color:"rgba(200,190,170,0.7)" }) }}>
+              {t === "create" ? "Créer un accès" : "J'ai une clé"}
+            </button>
+          ))}
+        </div>
+
+        {/* Create tab */}
+        {tab === "create" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <p style={{ margin:0, fontSize:12, lineHeight:1.6, color:"rgba(200,190,170,0.8)" }}>
+              Accès 100% anonyme. Une clé secrète unique est générée — c&apos;est ton seul moyen de te reconnecter. <strong style={{ color:"#fbbf24" }}>Note-la sur papier.</strong>
+            </p>
+            {errorCreate && (
+              <div style={{ display:"flex", gap:8, alignItems:"flex-start", borderRadius:12, border:"1px solid rgba(248,113,113,0.35)", background:"rgba(248,113,113,0.1)", padding:"10px 12px", fontSize:12, color:"#f87171" }}>
+                <AlertTriangle style={{ width:14, height:14, flexShrink:0, marginTop:1 }} />
+                {errorCreate}
+              </div>
+            )}
+            <button onClick={createAnonymousAccess} disabled={creating} style={{ ...btnStyle, display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"14px", borderRadius:999, border:"none", fontSize:14, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", cursor:"pointer", opacity:creating?0.6:1 }}>
+              {creating && <Loader2 style={{ width:16, height:16, animation:"spin 1s linear infinite" }} />}
+              Créer mon accès anonyme
+            </button>
+          </div>
+        )}
+
+        {/* Login tab */}
+        {tab === "login" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <label style={{ fontSize:11, textTransform:"uppercase", letterSpacing:"0.12em", color:"rgba(200,190,170,0.8)" }}>Ta clé secrète</label>
+              <div style={{ position:"relative" }}>
+                <input type={showKey?"text":"password"} value={loginInput} onChange={(e)=>setLoginInput(e.target.value)}
+                  onKeyDown={(e)=>{ if(e.key==="Enter" && !e.nativeEvent.isComposing) loginWithKey() }}
+                  placeholder="Colle ta clé secrète ici" autoComplete="off" spellCheck={false}
+                  style={{ width:"100%", padding:"12px 44px 12px 14px", borderRadius:14, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"inherit",
+                    transition:"border-color 0.2s" }}
+                  onFocus={(e)=>(e.target.style.borderColor=inputFocusBorder)}
+                  onBlur={(e)=>(e.target.style.borderColor=inputBorder)}
+                />
+                <button type="button" onClick={()=>setShowKey(!showKey)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:"rgba(200,190,170,0.6)", padding:0 }}>
+                  {showKey ? <EyeOff style={{ width:16, height:16 }} /> : <Eye style={{ width:16, height:16 }} />}
+                </button>
+              </div>
+            </div>
+            {error && <p style={{ margin:0, fontSize:12, color:"#f87171" }}>{error}</p>}
+            <button onClick={loginWithKey} disabled={loggingIn} style={{ ...btnStyle, display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"14px", borderRadius:999, border:"none", fontSize:14, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", cursor:"pointer", opacity:loggingIn?0.6:1 }}>
+              {loggingIn ? <Loader2 style={{ width:16, height:16, animation:"spin 1s linear infinite" }} /> : <KeyRound style={{ width:16, height:16 }} />}
+              Se connecter
+            </button>
+            <button onClick={()=>setShowLostKey(true)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"rgba(200,190,170,0.7)", textDecoration:"underline", padding:0, textAlign:"center" }}>
+              Clé perdue ? Récupérer mon compte
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Lost key modal */}
+      {showLostKey && (
+        <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.75)", padding:16 }}>
+          <div style={{ width:"100%", maxWidth:380, background:cardBg, border:cardBorder, borderRadius:24, padding:"28px 24px", boxShadow:cardShadow }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <h2 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"#f5e8c7" }}>Récupération de compte</h2>
+              <button onClick={()=>setShowLostKey(false)} style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(200,190,170,0.7)", padding:4 }}><X style={{ width:18, height:18 }} /></button>
+            </div>
+            {lostKeyDone ? (
+              <>
+                <p style={{ fontSize:14, color:"#4ade80", marginBottom:16 }}>Demande envoyée. Le vendeur la traitera sous 24-48h.</p>
+                <button onClick={()=>{setShowLostKey(false);setLostKeyDone(false)}} style={{ ...btnStyle, width:"100%", padding:12, borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer" }}>Fermer</button>
+              </>
+            ) : (
+              <>
+                <p style={{ margin:"0 0 14px", fontSize:12, lineHeight:1.6, color:"rgba(200,190,170,0.8)" }}>Indique ton pseudo et toute info utile. Une vérification KYC pourra être demandée.</p>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  <input value={lostKeyPseudo} onChange={(e)=>setLostKeyPseudo(e.target.value)} placeholder="Ton pseudo" style={{ padding:"10px 14px", borderRadius:12, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit" }} />
+                  <textarea value={lostKeyMsg} onChange={(e)=>setLostKeyMsg(e.target.value)} placeholder="Infos supplémentaires (optionnel)" rows={3} style={{ padding:"10px 14px", borderRadius:12, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit", resize:"none" }} />
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={()=>setShowLostKey(false)} style={{ flex:1, padding:"10px", borderRadius:999, border:"1px solid rgba(255,202,40,0.2)", background:"transparent", color:"rgba(200,190,170,0.8)", fontSize:13, cursor:"pointer" }}>Annuler</button>
+                    <button disabled={lostKeySubmitting || !lostKeyPseudo.trim()} onClick={async()=>{
+                      setLostKeySubmitting(true)
+                      await submitLostKeyClaim({ claimedPseudo:lostKeyPseudo, clientMessage:lostKeyMsg })
+                      setLostKeyDone(true); setLostKeySubmitting(false)
+                    }} style={{ ...btnStyle, flex:1, padding:"10px", borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:lostKeySubmitting||!lostKeyPseudo.trim()?0.5:1 }}>
+                      {lostKeySubmitting?"...":"Envoyer"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
 }
