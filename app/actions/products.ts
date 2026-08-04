@@ -119,6 +119,10 @@ export async function saveProduct(input: ProductInput) {
 
   revalidatePath("/")
   revalidatePath("/admin")
+  revalidatePath("/caliboyz31")
+  revalidatePath("/caliboyz94")
+  revalidatePath("/calidelivery")
+  revalidatePath("/choix")
   return { ok: true as const }
 }
 
