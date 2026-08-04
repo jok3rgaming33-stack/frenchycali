@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import dynamic from "next/dynamic"
 import {
   Package, Users, ShoppingBag, Bell, MessageCircle,
@@ -728,71 +728,17 @@ function PromosTab({ onRefresh }: { onRefresh: () => void }) {
 }
 
 // ─── Carte interactive ────────────────────────────────────────────────────────
+const LeafletMap = dynamic(() => import("./leaflet-map"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ height:500, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(15,13,7,.6)", borderRadius:16 }}>
+      <Loader2 size={28} color={ACCENT} style={{ animation:"spin 1s linear infinite" }}/>
+    </div>
+  ),
+})
+
 function MapTab({ orders }: { orders: OrderThread[] }) {
   const withCoords = orders.filter(o => o.lat && o.lng)
-  const mapRef = useRef<HTMLDivElement>(null)
-  const [mapReady, setMapReady] = useState(false)
-  const [mapInstance, setMapInstance] = useState<any>(null)
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !mapRef.current || mapInstance) return
-    let L: any
-    let map: any
-    ;(async () => {
-      try {
-        L = (await import("leaflet")).default
-        await import("leaflet/dist/leaflet.css")
-
-        // Fix default icon paths in Next.js
-        delete (L.Icon.Default.prototype as any)._getIconUrl
-        L.Icon.Default.mergeOptions({
-          iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-          iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-          shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-        })
-
-        map = L.map(mapRef.current!, { zoomControl: true })
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "© OpenStreetMap contributors",
-          maxZoom: 18,
-        }).addTo(map)
-
-        if (withCoords.length > 0) {
-          const bounds: [number, number][] = []
-          withCoords.forEach(o => {
-            const lat = o.lat!; const lng = o.lng!
-            bounds.push([lat, lng])
-            const icon = L.divIcon({
-              className: "",
-              html: `<div style="background:${ACCENT};color:#000;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid rgba(255,202,40,.4);box-shadow:0 0 8px rgba(255,202,40,.5)">${o.total}€</div>`,
-              iconSize: [28, 28],
-              iconAnchor: [14, 14],
-            })
-            L.marker([lat, lng], { icon })
-              .addTo(map)
-              .bindPopup(`<b>#${o.id} — ${o.customerName}</b><br>${o.summary.slice(0,60)}<br><b style="color:#e65100">${o.total}€</b>`)
-          })
-          map.fitBounds(bounds, { padding: [40, 40] })
-        } else {
-          map.setView([46.6034, 1.8883], 6) // France
-        }
-
-        setMapInstance(map)
-        setMapReady(true)
-      } catch (err) {
-        console.error("[v0] Leaflet init error:", err)
-      }
-    })()
-
-    return () => { if (map) { map.remove(); setMapInstance(null); setMapReady(false) } }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Add markers when orders change after initial load
-  useEffect(() => {
-    if (!mapInstance || !mapReady) return
-    // Markers are already added in init; this handles re-renders
-  }, [orders, mapInstance, mapReady])
 
   return (
     <div>
@@ -801,22 +747,14 @@ function MapTab({ orders }: { orders: OrderThread[] }) {
           {withCoords.length} commande(s) géolocalisées sur {orders.length} totales
         </p>
         {withCoords.length === 0 && (
-          <span style={{ fontSize:12, color:"rgba(255,202,40,.5)" }}>Aucune commande avec coordonnées GPS</span>
+          <span style={{ fontSize:12, color:"rgba(255,202,40,.5)" }}>Aucune commande avec coordonnées GPS pour l&apos;instant</span>
         )}
       </div>
 
-      {/* Map container */}
-      <div style={{ borderRadius:16, border:`1px solid ${BORDER}`, overflow:"hidden", position:"relative" }}>
-        <div ref={mapRef} style={{ width:"100%", height:500 }} />
-        {!mapReady && (
-          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(15,13,7,.8)", flexDirection:"column", gap:12 }}>
-            <Loader2 size={28} color={ACCENT} style={{ animation:"spin 1s linear infinite" }}/>
-            <p style={{ margin:0, fontSize:12, color:MUTED }}>Chargement de la carte...</p>
-          </div>
-        )}
+      <div style={{ borderRadius:16, border:`1px solid ${BORDER}`, overflow:"hidden" }}>
+        <LeafletMap orders={withCoords.map(o => ({ id:o.id, lat:o.lat!, lng:o.lng!, name:o.customerName, total:o.total, summary:o.summary }))} />
       </div>
 
-      {/* Orders list below map */}
       {withCoords.length > 0 && (
         <div style={{ marginTop:14, display:"flex", flexDirection:"column", gap:6 }}>
           <p style={{ margin:"0 0 8px", fontSize:11, textTransform:"uppercase", letterSpacing:"0.1em", color:MUTED }}>Détail des livraisons géolocalisées</p>
