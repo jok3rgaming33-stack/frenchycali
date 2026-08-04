@@ -562,67 +562,199 @@ function NotificationsTab({ broadcasts, onRefresh }: { broadcasts: any[]; onRefr
 }
 
 // ─── Products Tab ─────────────────────────────────────────────────────────────
-const EMPTY_FORM = { title:"", section:"featured", region:"both", description:"", fullDescription:"", image:"", stock:"10", variants:"[]", badges:"[]", discountType:"", discountValue:"", sortOrder:"0" }
+import { BADGE_OPTIONS } from "@/lib/badges"
+
+// Types stricts pour les variantes et le formulaire produit
+type Variant = { qty: number; price: number }
+
+type ProductFormState = {
+  title: string; section: string; region: string
+  description: string; fullDescription: string; image: string
+  stock: string; variants: Variant[]; badges: string[]
+  discountType: string; discountValue: string; sortOrder: string
+}
+
+const EMPTY_FORM: ProductFormState = {
+  title:"", section:"featured", region:"both", description:"", fullDescription:"",
+  image:"", stock:"10", variants:[{ qty:1, price:0 }], badges:[],
+  discountType:"", discountValue:"", sortOrder:"0",
+}
+
+// Conversion Product → formulaire structuré
+function productToForm(p: Product): ProductFormState {
+  return {
+    title: p.title, section: p.section || "featured", region: p.region || "both",
+    description: p.description || "", fullDescription: p.fullDescription || "",
+    image: p.image || "", stock: String(p.stock ?? 0),
+    variants: (p.variants as Variant[] | null)?.length ? (p.variants as Variant[]) : [{ qty:1, price:0 }],
+    badges: (p.badges as string[] | null) || [],
+    discountType: p.discountType || "", discountValue: p.discountValue != null ? String(p.discountValue) : "",
+    sortOrder: String(p.sortOrder ?? 0),
+  }
+}
+
+// Conversion formulaire → objet à persister
+function formToProduct(f: ProductFormState) {
+  return {
+    title: f.title, section: f.section, region: f.region,
+    description: f.description, fullDescription: f.fullDescription,
+    image: f.image || undefined, stock: Number(f.stock),
+    variants: f.variants.filter(v => v.qty > 0),
+    badges: f.badges,
+    discountType: f.discountType || undefined,
+    discountValue: f.discountValue ? Number(f.discountValue) : undefined,
+    sortOrder: Number(f.sortOrder),
+  }
+}
 
 function ProductForm({ initial, onSave, onCancel, title: formTitle }: {
-  initial: typeof EMPTY_FORM; onSave: (f: typeof EMPTY_FORM) => Promise<void>; onCancel: () => void; title: string
+  initial: ProductFormState; onSave: (f: ProductFormState) => Promise<void>; onCancel: () => void; title: string
 }) {
-  const [form, setForm] = useState(initial)
+  const [form, setForm] = useState<ProductFormState>(initial)
   const [saving, setSaving] = useState(false)
-  const set = (k: keyof typeof EMPTY_FORM) => (v: string) => setForm(f => ({ ...f, [k]: v }))
-  const sel = (k: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value }))
-  const selectStyle: React.CSSProperties = { width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${BORDER}`, background:"#1a1810", color:TEXT, fontSize:13, outline:"none" }
+
+  const setField = (k: keyof ProductFormState) => (v: string) => setForm(f => ({ ...f, [k]: v }))
+  const setSel   = (k: keyof ProductFormState) => (e: React.ChangeEvent<HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  // Variantes
+  const updateVariant = (i: number, field: "qty" | "price", val: string) =>
+    setForm(f => ({ ...f, variants: f.variants.map((v, idx) => idx === i ? { ...v, [field]: Number(val) } : v) }))
+  const addVariant    = () => setForm(f => ({ ...f, variants: [...f.variants, { qty:1, price:0 }] }))
+  const removeVariant = (i: number) => setForm(f => ({ ...f, variants: f.variants.filter((_, idx) => idx !== i) }))
+
+  // Badges toggle
+  const toggleBadge = (key: string) =>
+    setForm(f => ({ ...f, badges: f.badges.includes(key) ? f.badges.filter(b => b !== key) : [...f.badges, key] }))
 
   const handleSave = async () => {
     setSaving(true)
     try { await onSave(form) } finally { setSaving(false) }
   }
 
+  const selectStyle: React.CSSProperties = {
+    width:"100%", padding:"9px 12px", borderRadius:10,
+    border:`1px solid ${BORDER}`, background:"#1a1810", color:TEXT, fontSize:13, outline:"none",
+  }
+  const numInput: React.CSSProperties = {
+    width:"100%", padding:"8px 10px", borderRadius:8, border:`1px solid ${BORDER}`,
+    background:"#1a1810", color:TEXT, fontSize:13, outline:"none", textAlign:"center",
+  }
+
   return (
     <Card style={{ marginBottom:20 }}>
-      <h3 style={{ margin:"0 0 16px", fontSize:14, fontWeight:700, color:TEXT }}>{formTitle}</h3>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:12 }}>
-        <Field label="Nom du produit"><Input value={form.title} onChange={set("title")} placeholder="ex: OG Kush"/></Field>
+      <h3 style={{ margin:"0 0 18px", fontSize:14, fontWeight:700, color:TEXT }}>{formTitle}</h3>
+
+      {/* Grille champs principaux */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12 }}>
+        <Field label="Nom du produit"><Input value={form.title} onChange={setField("title")} placeholder="ex: OG Kush"/></Field>
         <Field label="Section">
-          <select value={form.section} onChange={sel("section")} style={selectStyle}>
-            {["featured","weed","hash","moonrocks","edibles","prerolls","cbd","other"].map(s => <option key={s} value={s}>{s}</option>)}
+          <select value={form.section} onChange={setSel("section")} style={selectStyle}>
+            {["featured","weed","hash","moonrocks","edibles","prerolls","cbd","other"].map(s =>
+              <option key={s} value={s}>{s}</option>)}
           </select>
         </Field>
         <Field label="Région">
-          <select value={form.region} onChange={sel("region")} style={selectStyle}>
+          <select value={form.region} onChange={setSel("region")} style={selectStyle}>
             <option value="both">31 + 94</option>
             <option value="31">31 seulement</option>
             <option value="94">94 seulement</option>
             <option value="delivery">CaliDelivery</option>
           </select>
         </Field>
-        <Field label="Stock"><Input value={form.stock} onChange={set("stock")} type="number"/></Field>
-        <Field label="Ordre tri"><Input value={form.sortOrder} onChange={set("sortOrder")} type="number"/></Field>
-        <Field label="Remise type">
-          <select value={form.discountType} onChange={sel("discountType")} style={selectStyle}>
+        <Field label="Stock"><Input value={form.stock} onChange={setField("stock")} type="number"/></Field>
+        <Field label="Ordre tri"><Input value={form.sortOrder} onChange={setField("sortOrder")} type="number"/></Field>
+        <Field label="Remise">
+          <select value={form.discountType} onChange={setSel("discountType")} style={selectStyle}>
             <option value="">Aucune</option>
             <option value="percent">Pourcentage (%)</option>
             <option value="fixed">Montant fixe (€)</option>
           </select>
         </Field>
         {form.discountType && (
-          <Field label={`Valeur remise ${form.discountType === "percent" ? "(%)" : "(€)"}`}>
-            <Input value={form.discountValue} onChange={set("discountValue")} type="number"/>
+          <Field label={form.discountType === "percent" ? "Valeur (%)" : "Valeur (€)"}>
+            <Input value={form.discountValue} onChange={setField("discountValue")} type="number"/>
           </Field>
         )}
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:12, marginTop:12 }}>
-        <Field label="Image URL"><Input value={form.image} onChange={set("image")} placeholder="https://..."/></Field>
-        <Field label="Description courte (card)"><Input value={form.description} onChange={set("description")} placeholder="Affiché sur la fiche produit"/></Field>
-        <Field label="Description complète (modal)"><Input value={form.fullDescription} onChange={set("fullDescription")} rows={3} placeholder="Détails complets..."/></Field>
-        <Field label={`Variantes JSON — ex: [{"qty":5,"price":30},{"qty":10,"price":55}]`}>
-          <Input value={form.variants} onChange={set("variants")} rows={2}/>
-        </Field>
-        <Field label={`Badges JSON — ex: ["New","Promo"]`}>
-          <Input value={form.badges} onChange={set("badges")} rows={1}/>
-        </Field>
+
+      {/* Image + descriptions */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:10, marginTop:12 }}>
+        <Field label="Image URL"><Input value={form.image} onChange={setField("image")} placeholder="https://..."/></Field>
+        <Field label="Description courte (card)"><Input value={form.description} onChange={setField("description")} placeholder="Affiché sur la fiche produit"/></Field>
+        <Field label="Description complète (modal)"><Input value={form.fullDescription} onChange={setField("fullDescription")} rows={3} placeholder="Détails, terroir, effets..."/></Field>
       </div>
-      <div style={{ marginTop:16, display:"flex", gap:10 }}>
+
+      {/* Variantes — lignes qty / prix */}
+      <div style={{ marginTop:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <span style={{ fontSize:13, fontWeight:600, color:TEXT }}>Variantes (quantité / prix €)</span>
+          <Btn onClick={addVariant}><Plus size={13}/> Ajouter</Btn>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {form.variants.map((v, i) => (
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ flex:1 }}>
+                <label style={{ display:"block", fontSize:10, color:MUTED, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>Quantité (g / u)</label>
+                <input
+                  type="number" min={1} value={v.qty}
+                  onChange={e => updateVariant(i, "qty", e.target.value)}
+                  placeholder="ex: 5"
+                  style={numInput}
+                />
+              </div>
+              <div style={{ flex:1 }}>
+                <label style={{ display:"block", fontSize:10, color:MUTED, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>Prix (€)</label>
+                <input
+                  type="number" min={0} step={0.5} value={v.price}
+                  onChange={e => updateVariant(i, "price", e.target.value)}
+                  placeholder="ex: 30"
+                  style={numInput}
+                />
+              </div>
+              <button
+                onClick={() => removeVariant(i)}
+                disabled={form.variants.length === 1}
+                style={{ marginTop:18, background:"transparent", border:"none", cursor:"pointer", color:"#ef4444", opacity: form.variants.length === 1 ? 0.3 : 1, padding:"4px" }}
+                title="Supprimer cette variante"
+              >
+                <Trash2 size={15}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Badges — boutons toggle colorés */}
+      <div style={{ marginTop:16 }}>
+        <span style={{ display:"block", fontSize:13, fontWeight:600, color:TEXT, marginBottom:10 }}>Badges produit</span>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+          {BADGE_OPTIONS.map(b => {
+            const active = form.badges.includes(b.key)
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => toggleBadge(b.key)}
+                style={{
+                  padding:"5px 14px", borderRadius:999, fontSize:12, fontWeight:700, cursor:"pointer",
+                  border: active ? "none" : `1px solid ${BORDER}`,
+                  background: active ? b.bg : "transparent",
+                  color: active ? b.color : MUTED,
+                  transition:"all .15s",
+                  outline:"none",
+                }}
+              >
+                {b.label}
+              </button>
+            )
+          })}
+        </div>
+        <p style={{ margin:"8px 0 0", fontSize:11, color:"rgba(200,190,170,.35)" }}>
+          Le badge &quot;En réappro&quot; s&apos;ajoute automatiquement si le stock est bas (≤5).
+        </p>
+      </div>
+
+      <div style={{ marginTop:18, display:"flex", gap:10 }}>
         <Btn variant="primary" onClick={handleSave} disabled={saving || !form.title.trim()}>
           {saving ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Save size={13}/>} Enregistrer
         </Btn>
@@ -637,34 +769,14 @@ function ProductsTab({ products, onRefresh }: { products: Product[]; onRefresh: 
   const [editingId, setEditingId] = useState<number|null>(null)
   const [search, setSearch] = useState("")
 
-  const toForm = (p: Product): typeof EMPTY_FORM => ({
-    title: p.title, section: p.section || "featured", region: p.region || "both",
-    description: p.description || "", fullDescription: p.fullDescription || "",
-    image: p.image || "", stock: String(p.stock ?? 0),
-    variants: JSON.stringify(p.variants || []),
-    badges: JSON.stringify(p.badges || []),
-    discountType: p.discountType || "", discountValue: p.discountValue != null ? String(p.discountValue) : "",
-    sortOrder: String(p.sortOrder ?? 0),
-  })
-
-  const parseForm = (f: typeof EMPTY_FORM) => {
-    let variants: any[] = []; try { variants = JSON.parse(f.variants) } catch {}
-    let badges: any[] = []; try { badges = JSON.parse(f.badges) } catch {}
-    return { title: f.title, section: f.section, region: f.region,
-      description: f.description, fullDescription: f.fullDescription,
-      image: f.image || undefined, stock: Number(f.stock), variants, badges,
-      discountType: f.discountType || undefined, discountValue: f.discountValue ? Number(f.discountValue) : undefined,
-      sortOrder: Number(f.sortOrder) }
-  }
-
-  const handleCreate = async (f: typeof EMPTY_FORM) => {
-    await createProduct(parseForm(f))
+  const handleCreate = async (f: ProductFormState) => {
+    await createProduct(formToProduct(f))
     setCreating(false)
     onRefresh()
   }
 
-  const handleUpdate = async (id: number, f: typeof EMPTY_FORM) => {
-    await updateProduct(id, parseForm(f))
+  const handleUpdate = async (id: number, f: ProductFormState) => {
+    await updateProduct(id, formToProduct(f))
     setEditingId(null)
     onRefresh()
   }
@@ -692,7 +804,7 @@ function ProductsTab({ products, onRefresh }: { products: Product[]; onRefresh: 
         {filtered.map(p => (
           <div key={p.id}>
             {editingId === p.id ? (
-              <ProductForm initial={toForm(p)} title={`Modifier : ${p.title}`}
+              <ProductForm initial={productToForm(p)} title={`Modifier : ${p.title}`}
                 onSave={f => handleUpdate(p.id, f)} onCancel={() => setEditingId(null)} />
             ) : (
               <Card style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 16px" }}>
