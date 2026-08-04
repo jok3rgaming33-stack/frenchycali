@@ -5,3 +5,9 @@ node_modules
 *.tsbuildinfo
 .DS_Store
 drizzle/meta
+
+.vercel
+
+.admin-token.local
+.env.vercel*
+
