@@ -134,10 +134,10 @@ body {
   background-clip: text;
 }
 
-/* Canvas particles — always behind everything */
+/* Canvas particles — toujours DERRIÈRE le contenu boutique (sinon cartes/modales illisibles) */
 #particles-canvas {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
 }

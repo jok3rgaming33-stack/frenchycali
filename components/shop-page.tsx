@@ -22,6 +22,7 @@ import { RecoveryBanner } from "@/components/recovery-banner"
 import { AppBadgeSync } from "@/components/app-badge-sync"
 import { NotificationsProvider } from "@/components/notifications-provider"
 import { UserDashboardModal } from "@/components/user-dashboard-modal"
+import { BlobMedia } from "@/components/blob-media"
 
 type Shop = "caliboyz31" | "caliboyz94" | "calidelivery"
 
@@ -258,15 +259,22 @@ export function ShopPage({ shop, initialProducts }: Props) {
     { label: "COMMENT ÇA MARCHE", icon: <HelpCircle style={{width:14,height:14}} />, action: () => { setHowOpen(true); setMobileMenuOpen(false) } },
   ]
 
+  const productImage = (p: Product) => p.image || p.media?.[0]?.url || null
+  const productMediaType = (p: Product): "image" | "video" | undefined => {
+    const m = p.media?.[0]
+    if (m?.type === "video" || m?.type === "image") return m.type
+    return undefined
+  }
+
   return (
     <NotificationsProvider>
     <CartProvider>
-    <div className={isDelivery ? "theme-delivery" : undefined} style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, color: isDelivery ? "#f0f8ff" : "#f5e8c7", fontFamily:"Inter,system-ui,sans-serif", position:"relative" }}>
+    <div className={isDelivery ? "theme-delivery" : undefined} style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, color: isDelivery ? "#f0f8ff" : "#f5e8c7", fontFamily:"Inter,system-ui,sans-serif", position:"relative", isolation:"isolate" }}>
       <AppBadgeSync />
       <RecoveryBanner token={userToken} onOpenMessaging={() => setMsgOpen(true)} />
       {previewMode && (
         <div style={{
-          position:"sticky", top:0, zIndex:50, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:10,
+          position:"relative", zIndex:60, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:10,
           padding:"10px 16px", background: isDelivery ? "rgba(139,0,255,.92)" : "rgba(230,81,0,.92)", color:"#fff", fontSize:12, fontWeight:600,
         }}>
           <span>
@@ -286,17 +294,30 @@ export function ShopPage({ shop, initialProducts }: Props) {
           .desktop-nav-right { display: flex !important; }
           .mobile-nav-right  { display: none !important; }
           .desktop-nav-bar   { display: flex !important; }
+          .product-modal-backdrop { align-items: center !important; padding: 24px !important; }
+          .product-modal-sheet {
+            border-radius: 20px !important;
+            max-height: min(85vh, 720px) !important;
+            width: min(100%, 520px) !important;
+          }
         }
         @media (max-width: 767px) {
           .desktop-nav-right { display: none !important; }
           .mobile-nav-right  { display: flex !important; }
           .desktop-nav-bar   { display: none !important; }
+          .product-modal-backdrop { align-items: flex-end !important; }
+          .product-modal-sheet {
+            border-radius: 24px 24px 0 0 !important;
+            max-height: 85vh !important;
+            width: 100% !important;
+          }
         }
+        .shop-layer { position: relative; z-index: 2; }
       `}</style>
       <ParticlesCanvas theme={theme} />
 
       {/* ══ NAVBAR ══ */}
-      <header style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", backdropFilter:"blur(14px)" }}>
+      <header className="shop-layer" style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", backdropFilter:"blur(14px)" }}>
 
         {/* Top row: logo + mobile controls */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", maxWidth:1400, margin:"0 auto" }}>
@@ -414,67 +435,99 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
       {/* VIEWS */}
       {view === "cart" && (
+        <div className="shop-layer">
         <CheckoutCart
           cart={cart} setCart={setCart} customerToken={userToken} customerName={userPseudo}
           shop={shop} onBack={() => setView("shop")} onOrderPlaced={() => setView("orders")}
           accentColor={accentColor} primaryColor={primaryColor} cardBorder={cardBorder}
         />
+        </div>
       )}
 
       {view === "orders" && (
+        <div className="shop-layer">
         <OrderTracker customerToken={userToken} onBack={() => setView("shop")} accentColor={accentColor} cardBorder={cardBorder} />
+        </div>
       )}
 
       {view === "shop" && (
-        <main style={{ maxWidth:1100, margin:"0 auto", padding:"24px 16px 40px" }}>
-          {/* Section filters — sticky desktop bar */}
+        <main className="shop-layer" style={{ position:"relative", zIndex:2, maxWidth:1200, margin:"0 auto", padding:"20px 16px 48px", width:"100%", boxSizing:"border-box" }}>
+          {/* Filtres catégories */}
           {sections.length > 0 && (
-            <>
-              {/* Desktop: sticky bar below header */}
-              <div style={{ position:"sticky", top:61, zIndex:10, margin:"0 -16px 24px", padding:"8px 16px", background: isDelivery?"rgba(10,0,18,.95)":"rgba(15,13,7,.95)", backdropFilter:"blur(10px)", borderBottom:`1px solid ${cardBorder}`, display:"flex", gap:8, overflowX:"auto", scrollbarWidth:"none" }}>
-                <button onClick={() => setActiveSection("all")}
-                  style={{ flexShrink:0, padding:"7px 18px", borderRadius:999, border:`1px solid ${activeSection==="all"?accentColor:cardBorder}`, background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:700, transition:"all .2s", whiteSpace:"nowrap" }}>
-                  Tout
+            <div style={{
+              position:"sticky", top:0, zIndex:15, margin:"0 0 20px", padding:"10px 0",
+              background: isDelivery?"rgba(10,0,18,.92)":"rgba(15,13,7,.92)", backdropFilter:"blur(10px)",
+              display:"flex", gap:8, overflowX:"auto", scrollbarWidth:"none", WebkitOverflowScrolling:"touch" as unknown as undefined,
+            }}>
+              <button type="button" onClick={() => setActiveSection("all")}
+                style={{ flexShrink:0, padding:"8px 18px", borderRadius:999, border:`1px solid ${activeSection==="all"?accentColor:cardBorder}`, background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" }}>
+                Tout
+              </button>
+              {sections.map((s) => (
+                <button type="button" key={s} onClick={() => setActiveSection(s)}
+                  style={{ flexShrink:0, padding:"8px 18px", borderRadius:999, border:`1px solid ${activeSection===s?accentColor:cardBorder}`, background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:activeSection===s?700:400, whiteSpace:"nowrap" }}>
+                  {s}
                 </button>
-                {sections.map((s) => (
-                  <button key={s} onClick={() => setActiveSection(s)}
-                    style={{ flexShrink:0, padding:"7px 18px", borderRadius:999, border:`1px solid ${activeSection===s?accentColor:cardBorder}`, background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:activeSection===s?700:400, transition:"all .2s", whiteSpace:"nowrap" }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-
-
-            </>
+              ))}
+            </div>
           )}
 
-          {/* Product grid */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:20 }}>
-            {displayed.map((product) => (
-              <div key={product.id} onClick={() => setSelectedProduct(product)}
-                style={{ borderRadius:20, border:`1px solid ${cardBorder}`, background:"rgba(20,18,12,.82)", overflow:"hidden", cursor:"pointer", transition:"all .3s",
-                  boxShadow:"0 8px 20px rgba(0,0,0,.5)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform="translateY(-4px)"; (e.currentTarget as HTMLElement).style.boxShadow=`0 0 25px ${glowColor}` }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="0 8px 20px rgba(0,0,0,.5)" }}>
-                {product.image && (
-                  <div style={{ height:180, overflow:"hidden" }}>
-                    <img src={product.image} alt={product.title} style={{ width:"100%", height:"100%", objectFit:"cover", transition:"transform .4s" }} />
-                  </div>
-                )}
-                <div style={{ padding:"14px 16px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8, marginBottom:6 }}>
-                    <h3 style={{ margin:0, fontSize:15, fontWeight:700, color: isDelivery?"#f0f8ff":"#f5e8c7" }}>{product.title}</h3>
+          {/* Grille produits — en haut de page, pas collée en bas */}
+          <div style={{
+            display:"grid",
+            gridTemplateColumns:"repeat(auto-fill, minmax(min(100%, 260px), 1fr))",
+            gap:16,
+            alignItems:"start",
+            alignContent:"start",
+          }}>
+            {displayed.map((product) => {
+              const img = productImage(product)
+              const mType = productMediaType(product)
+              return (
+              <div key={product.id} role="button" tabIndex={0}
+                onClick={() => setSelectedProduct(product)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedProduct(product) } }}
+                style={{
+                  borderRadius:20, border:`1px solid ${cardBorder}`, background:isDelivery?"rgba(18,0,31,.92)":"rgba(20,18,12,.92)",
+                  overflow:"hidden", cursor:"pointer", transition:"transform .25s, box-shadow .25s",
+                  boxShadow:"0 8px 20px rgba(0,0,0,.45)", display:"flex", flexDirection:"column", minHeight:0,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform="translateY(-3px)"; (e.currentTarget as HTMLElement).style.boxShadow=`0 0 22px ${glowColor}` }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="0 8px 20px rgba(0,0,0,.45)" }}>
+                {/* Zone média toujours présente pour une hauteur de carte stable */}
+                <div style={{
+                  height:170, overflow:"hidden", flexShrink:0,
+                  background: isDelivery
+                    ? "linear-gradient(145deg, rgba(139,0,255,.25), rgba(0,255,157,.08))"
+                    : "linear-gradient(145deg, rgba(255,202,40,.18), rgba(230,81,0,.08))",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                }}>
+                  {img ? (
+                    <BlobMedia
+                      src={img}
+                      alt={product.title}
+                      mediaType={mType}
+                      className="h-full w-full object-cover"
+                      videoProps={{ muted: true, playsInline: true, loop: true, autoPlay: true, style: { width:"100%", height:"100%", objectFit:"cover" } }}
+                    />
+                  ) : (
+                    <Package style={{ width:40, height:40, opacity:0.35, color: accentColor }} />
+                  )}
+                </div>
+                <div style={{ padding:"14px 16px", display:"flex", flexDirection:"column", gap:8, flex:1 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                    <h3 style={{ margin:0, fontSize:15, fontWeight:700, color: isDelivery?"#f0f8ff":"#f5e8c7", lineHeight:1.3 }}>{product.title}</h3>
                     {product.stock === 0 && (
                       <span style={{ flexShrink:0, fontSize:10, padding:"2px 8px", borderRadius:999, background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.3)", color:"#f87171" }}>Rupture</span>
                     )}
                   </div>
-                  {product.description && <p style={{ margin:"0 0 10px", fontSize:12, color:"rgba(200,190,170,.7)", lineHeight:1.5 }}>{product.description}</p>}
+                  {product.description && <p style={{ margin:0, fontSize:12, color:"rgba(200,190,170,.7)", lineHeight:1.5 }}>{product.description}</p>}
                   {product.variants && product.variants.length > 0 && (
-                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:"auto" }}>
                       {product.variants.map((v, i) => (
-                        <button key={i} onClick={(e) => { e.stopPropagation(); if(product.stock>0) addToCart(product, v, `${v.qty}g`) }}
+                        <button key={i} type="button" onClick={(e) => { e.stopPropagation(); if(product.stock>0) addToCart(product, v, `${v.qty}g`) }}
                           disabled={product.stock === 0}
-                          style={{ padding:"5px 12px", borderRadius:999, border:`1px solid ${cardBorder}`, background:`rgba(${isDelivery?"139,0,255":"255,202,40"},.1)`, color:accentColor, fontSize:12, cursor:product.stock===0?"not-allowed":"pointer", fontWeight:600, opacity:product.stock===0?.5:1 }}>
+                          style={{ padding:"6px 12px", borderRadius:999, border:`1px solid ${cardBorder}`, background:`rgba(${isDelivery?"139,0,255":"255,202,40"},.12)`, color:accentColor, fontSize:12, cursor:product.stock===0?"not-allowed":"pointer", fontWeight:600, opacity:product.stock===0?.5:1 }}>
                           {v.qty}g — {v.price}€
                         </button>
                       ))}
@@ -482,11 +535,12 @@ export function ShopPage({ shop, initialProducts }: Props) {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           {displayed.length === 0 && (
-            <div style={{ textAlign:"center", padding:"80px 20px", color:"rgba(200,190,170,.5)" }}>
+            <div style={{ textAlign:"center", padding:"64px 20px", color:"rgba(200,190,170,.5)" }}>
               <Package style={{ width:48, height:48, margin:"0 auto 16px" }} />
               <p style={{ margin:0, fontSize:16 }}>Aucun produit disponible</p>
             </div>
@@ -494,24 +548,51 @@ export function ShopPage({ shop, initialProducts }: Props) {
         </main>
       )}
 
-      {/* Product detail modal */}
+      {/* Détail produit : bottom sheet mobile · modal centré desktop */}
       {selectedProduct && (
-        <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"flex-end", justifyContent:"center", background:"rgba(0,0,0,.8)" }}
-          onClick={() => setSelectedProduct(null)}>
-          <div style={{ width:"100%", maxWidth:560, background:isDelivery?"#12001f":"rgba(20,18,12,.98)", borderRadius:"24px 24px 0 0", border:`1px solid ${cardBorder}`, padding:"24px", maxHeight:"80vh", overflowY:"auto" }}
-            onClick={(e) => e.stopPropagation()}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        <div
+          className="product-modal-backdrop"
+          style={{ position:"fixed", inset:0, zIndex:80, display:"flex", justifyContent:"center", background:"rgba(0,0,0,.82)", padding:0 }}
+          onClick={() => setSelectedProduct(null)}
+        >
+          <div
+            className="product-modal-sheet"
+            style={{
+              background:isDelivery?"#12001f":"rgba(20,18,12,.98)",
+              border:`1px solid ${cardBorder}`,
+              padding:"20px 20px 28px",
+              overflowY:"auto",
+              boxShadow:"0 -8px 40px rgba(0,0,0,.55)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, gap:12 }}>
               <h2 style={{ margin:0, fontSize:18, fontWeight:700, color:isDelivery?"#f0f8ff":"#f5e8c7" }}>{selectedProduct.title}</h2>
-              <button type="button" onClick={() => setSelectedProduct(null)} style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(200,190,170,.7)", fontSize:20 }}>×</button>
+              <button type="button" onClick={() => setSelectedProduct(null)} aria-label="Fermer"
+                style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cardBorder}`, borderRadius:10, width:36, height:36, cursor:"pointer", color:"rgba(200,190,170,.9)", fontSize:18, lineHeight:1 }}>×</button>
             </div>
-            {selectedProduct.image && <img src={selectedProduct.image} alt={selectedProduct.title} style={{ width:"100%", height:220, objectFit:"cover", borderRadius:16, marginBottom:16 }} />}
-            {selectedProduct.fullDescription && <p style={{ margin:"0 0 16px", fontSize:14, lineHeight:1.7, color:"rgba(200,190,170,.9)" }}>{selectedProduct.fullDescription}</p>}
+            {productImage(selectedProduct) ? (
+              <div style={{ width:"100%", height:200, borderRadius:16, overflow:"hidden", marginBottom:16, background:"#000" }}>
+                <BlobMedia
+                  src={productImage(selectedProduct)}
+                  alt={selectedProduct.title}
+                  mediaType={productMediaType(selectedProduct)}
+                  className="h-full w-full object-cover"
+                  videoProps={{ muted: true, playsInline: true, controls: true, style: { width:"100%", height:"100%", objectFit:"cover" } }}
+                />
+              </div>
+            ) : null}
+            {(selectedProduct.fullDescription || selectedProduct.description) && (
+              <p style={{ margin:"0 0 16px", fontSize:14, lineHeight:1.7, color:"rgba(200,190,170,.9)" }}>
+                {selectedProduct.fullDescription || selectedProduct.description}
+              </p>
+            )}
             {selectedProduct.stock === 0 ? (
               <div style={{ textAlign:"center", padding:"16px", borderRadius:14, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", color:"#f87171", fontSize:14 }}>Rupture de stock</div>
             ) : (
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 <p style={{ margin:0, fontSize:12, textTransform:"uppercase", letterSpacing:"0.1em", color:"rgba(200,190,170,.6)" }}>Choisir un format</p>
-                {selectedProduct.variants.map((v, i) => (
+                {(selectedProduct.variants ?? []).map((v, i) => (
                   <button key={i} type="button" onClick={() => addToCart(selectedProduct, v, `${v.qty}g`)}
                     style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 18px", borderRadius:14, border:`1px solid ${cardBorder}`, background:`rgba(${isDelivery?"139,0,255":"255,202,40"},.08)`, color:isDelivery?"#f0f8ff":"#f5e8c7", cursor:"pointer", fontSize:14, fontWeight:600 }}>
                     <span>{v.qty}g</span>
