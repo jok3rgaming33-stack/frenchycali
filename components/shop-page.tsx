@@ -159,16 +159,18 @@ export function ShopPage({ shop, initialProducts }: Props) {
               <User style={{ width:13, height:13 }} />
               <span style={{ maxWidth:72, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{userPseudo}</span>
             </button>
-            {/* PANEL ADMIN — visible pour tous, protégé par token côté /admin */}
-            <a href="/admin/login"
-              style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:999,
-                background:`rgba(${isDelivery?"139,0,255":"34,197,94"},.18)`,
-                border:`1px solid rgba(${isDelivery?"139,0,255":"34,197,94"},.35)`,
-                color: isDelivery ? "#bf7fff" : "#4ade80",
-                textDecoration:"none", fontSize:12, fontWeight:700, letterSpacing:"0.06em" }}>
-              <Shield style={{ width:13, height:13 }} />
-              PANEL ADMIN
-            </a>
+            {/* PANEL ADMIN — visible seulement pour les comptes marqués isAdmin */}
+            {isAdmin && (
+              <a href="/admin"
+                style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:999,
+                  background:`rgba(${isDelivery?"139,0,255":"34,197,94"},.18)`,
+                  border:`1px solid rgba(${isDelivery?"139,0,255":"34,197,94"},.35)`,
+                  color: isDelivery ? "#bf7fff" : "#4ade80",
+                  textDecoration:"none", fontSize:12, fontWeight:700, letterSpacing:"0.06em" }}>
+                <Shield style={{ width:13, height:13 }} />
+                PANEL ADMIN
+              </a>
+            )}
             {/* Panier */}
             <button onClick={() => { setView("cart"); setMobileMenuOpen(false) }}
               style={{ position:"relative", display:"flex", alignItems:"center", gap:6, background:cartCount>0?`rgba(${isDelivery?"0,255,157":"255,202,40"},.14)`:"transparent",
@@ -225,12 +227,16 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 {item.icon}{item.label}
               </button>
             ))}
-            <div style={{ height:1, background:cardBorder, margin:"6px 20px" }} />
-            <a href="/admin/login"
-              style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 20px",
-                color: isDelivery ? "#bf7fff" : "#4ade80", fontSize:14, fontWeight:700, textDecoration:"none", letterSpacing:"0.06em", textTransform:"uppercase" as const }}>
-              <Shield style={{ width:16, height:16 }} />PANEL ADMIN
-            </a>
+            {isAdmin && (
+              <>
+                <div style={{ height:1, background:cardBorder, margin:"6px 20px" }} />
+                <a href="/admin"
+                  style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 20px",
+                    color: isDelivery ? "#bf7fff" : "#4ade80", fontSize:14, fontWeight:700, textDecoration:"none", letterSpacing:"0.06em", textTransform:"uppercase" as const }}>
+                  <Shield style={{ width:16, height:16 }} />PANEL ADMIN
+                </a>
+              </>
+            )}
             <button onClick={() => { setView("login"); setMobileMenuOpen(false) }}
               style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"14px 20px", background:"transparent", border:"none",
                 color:"rgba(200,190,170,.6)", fontSize:14, fontWeight:600, cursor:"pointer", textAlign:"left" as const }}>
