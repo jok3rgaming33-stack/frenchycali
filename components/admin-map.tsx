@@ -304,6 +304,7 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
   // Création de la carte (une seule fois)
   useEffect(() => {
     let cancelled = false
+    let onResize: (() => void) | null = null
     ;(async () => {
       const L = (await import("leaflet")).default
       if (cancelled || !containerRef.current || mapRef.current) return
@@ -327,11 +328,22 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
       })
 
       setReady(true)
-      setTimeout(() => map.invalidateSize(), 100)
+      const invalidate = () => {
+        try {
+          map.invalidateSize()
+        } catch {
+          /* unmounted */
+        }
+      }
+      setTimeout(invalidate, 100)
+      setTimeout(invalidate, 400)
+      onResize = invalidate
+      window.addEventListener("resize", invalidate)
     })()
 
     return () => {
       cancelled = true
+      if (onResize) window.removeEventListener("resize", onResize)
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
@@ -442,51 +454,53 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
     return m ? `${h} h ${m} min` : `${h} h`
   }, [routing.durationMin])
 
+  const mapActionBtn =
+    "inline-flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-center text-[11px] font-medium leading-tight transition-colors sm:text-xs"
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/15 text-accent">
-            <MapIcon className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <div>
-            <h2 className="text-lg font-bold">Tournée de livraison</h2>
-            <p className="text-xs text-muted-foreground">
-              Clique sur la carte (ou glisse le point rouge) pour définir ton point de départ, puis choisis les
-              commandes à assurer. L&apos;itinéraire est calculé par la route.
-            </p>
-          </div>
+    <div className="flex w-full min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 flex-wrap items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+          <MapIcon className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-bold">Tournée de livraison</h2>
+          <p className="text-xs text-muted-foreground">
+            Clique sur la carte (ou glisse le point rouge) pour définir ton point de départ, puis choisis les
+            commandes à assurer. L&apos;itinéraire est calculé par la route.
+          </p>
         </div>
       </div>
 
       {/* Légende des échéances */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[11px] sm:gap-x-4 sm:px-4 sm:text-xs">
         <span className="flex items-center gap-1.5 font-medium text-muted-foreground">
-          <span className="inline-block h-3 w-3 rounded-full bg-[#e11d48]" aria-hidden="true" /> Départ
+          <span className="inline-block h-3 w-3 shrink-0 rounded-full bg-[#e11d48]" aria-hidden="true" /> Départ
         </span>
-        <span className="h-3 w-px bg-border" aria-hidden="true" />
+        <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden="true" />
         {legend.map((l) => (
           <span key={l.label} className="flex items-center gap-1.5 text-muted-foreground">
-            <span className="inline-block h-3 w-3 rounded-full" style={{ background: l.color }} aria-hidden="true" />
+            <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: l.color }} aria-hidden="true" />
             {l.label}
           </span>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+      {/* Carte + panneau : 1 col mobile, 2 cols desktop — min-w-0 évite le débordement */}
+      <div className="grid w-full min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <div
           ref={containerRef}
-          className="h-[60vh] min-h-[420px] w-full overflow-hidden rounded-2xl border border-border bg-card"
+          className="admin-map-canvas relative z-0 h-[50vh] min-h-[320px] w-full min-w-0 overflow-hidden rounded-2xl border border-border bg-card sm:h-[55vh] sm:min-h-[380px] lg:h-[60vh] lg:min-h-[420px]"
           aria-label="Carte des livraisons"
         />
 
         {/* Panneau de tournée */}
-        <div className="flex max-h-[60vh] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="border-b border-border px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Route className="h-4 w-4 text-accent" aria-hidden="true" />
-              <h3 className="text-sm font-semibold">Itinéraire optimisé</h3>
-              {routeLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden="true" />}
+        <div className="flex max-h-none min-h-[280px] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card lg:max-h-[60vh] lg:min-h-[420px]">
+          <div className="shrink-0 border-b border-border px-3 py-3 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <Route className="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
+              <h3 className="min-w-0 truncate text-sm font-semibold">Itinéraire optimisé</h3>
+              {routeLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />}
             </div>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
               <span>
@@ -503,18 +517,20 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
                 Routage indisponible : estimation à vol d&apos;oiseau affichée.
               </p>
             )}
-            <div className="mt-2 flex gap-2">
+
+            {/* Grille 2×2 : tous les boutons toujours visibles (mobile + desktop) */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set(located.map((t) => t.id)))}
-                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-secondary"
+                className={`${mapActionBtn} border-border bg-background hover:bg-secondary`}
               >
                 Tout sélectionner
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
-                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-secondary"
+                className={`${mapActionBtn} border-border bg-background hover:bg-secondary`}
               >
                 Tout retirer
               </button>
@@ -522,30 +538,31 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
                 type="button"
                 onClick={saveOrigin}
                 disabled={savingOrigin}
-                className="ml-auto flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/15 px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/25 disabled:opacity-50"
+                className={`${mapActionBtn} border-accent/40 bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50`}
                 title="Enregistrer ce point de départ comme valeur par défaut"
               >
                 {savingOrigin ? (
-                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
                 ) : savedOrigin ? (
-                  <Check className="h-3 w-3" aria-hidden="true" />
+                  <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 ) : (
-                  <Save className="h-3 w-3" aria-hidden="true" />
+                  <Save className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 )}
-                {savedOrigin ? "Enregistré" : "Mémoriser"}
+                <span className="truncate">{savedOrigin ? "Enregistré" : "Mémoriser"}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setDeparture(DEFAULT_ORIGIN)}
-                className="flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-secondary"
+                className={`${mapActionBtn} border-border bg-background hover:bg-secondary`}
                 title="Réinitialiser le point de départ"
               >
-                <RotateCcw className="h-3 w-3" aria-hidden="true" /> Départ
+                <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Réinit. départ</span>
               </button>
             </div>
           </div>
 
-          <ul className="flex-1 overflow-y-auto">
+          <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {located.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
                 Aucune commande à livrer pour le moment.
@@ -559,7 +576,7 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
               return (
                 <li key={t.id}>
                   <label
-                    className={`flex cursor-pointer items-center gap-3 border-b border-border/60 px-4 py-3 transition-colors hover:bg-secondary ${
+                    className={`flex cursor-pointer items-center gap-3 border-b border-border/60 px-3 py-3 transition-colors hover:bg-secondary sm:px-4 ${
                       selected ? "" : "opacity-60"
                     }`}
                   >
@@ -583,7 +600,7 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
                           <Truck className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
                         )}
                       </span>
-                      <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                         <span
                           className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-semibold text-white"
                           style={{ background: u.color }}
@@ -608,8 +625,8 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
       </div>
 
       {(unlocatedCount > 0 || deliveredCount > 0) && (
-        <p className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
-          <MapPinOff className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <p className="flex flex-wrap items-start gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+          <MapPinOff className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           {unlocatedCount > 0 && (
             <span>
               {unlocatedCount} commande{unlocatedCount > 1 ? "s" : ""} sans localisation (meet-up ou adresse non

@@ -164,13 +164,13 @@ export function AdminPanel({
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="admin-panel-root min-h-screen bg-background text-foreground">
       <AdminAppBadgeSync total={badges.total} />
       {/* Header */}
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div>
-            <h1 className="text-xl font-bold">Panel Administrateur</h1>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:gap-4 sm:px-6">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold sm:text-xl">Panel Administrateur</h1>
             <p className="text-xs text-muted-foreground">
               Connecté en tant que Heisenberg
               {badges.total > 0 && (
@@ -180,17 +180,17 @@ export function AdminPanel({
               )}
             </p>
           </div>
-          <div className="relative flex items-center gap-2">
+          <div className="relative flex shrink-0 flex-wrap items-center gap-2">
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setVueClientOpen((v) => !v)}
                 disabled={vueClientBusy}
-                className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm"
               >
-                <Eye className="h-4 w-4" aria-hidden="true" />
-                {vueClientBusy ? "Ouverture…" : "Vue Client"}
-                <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap">{vueClientBusy ? "Ouverture…" : "Vue Client"}</span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
               </button>
               {vueClientOpen && (
                 <>
@@ -247,8 +247,8 @@ export function AdminPanel({
           <PushToggle role="vendeur" className="mt-1" />
         </div>
 
-        {/* Tabs */}
-        <nav className="mb-6 flex flex-wrap gap-2" aria-label="Sections admin">
+        {/* Tabs — wrap mobile + desktop, labels complets */}
+        <nav className="mb-6 flex flex-wrap gap-1.5 sm:gap-2" aria-label="Sections admin">
           {TABS.map(({ id, label, icon: Icon }) => {
             const count = tabBadge(id)
             return (
@@ -256,14 +256,14 @@ export function AdminPanel({
                 key={id}
                 onClick={() => setTab(id)}
                 aria-current={tab === id ? "page" : undefined}
-                className={`relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`relative flex max-w-full items-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] font-medium transition-colors sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm ${
                   tab === id
                     ? "bg-accent text-accent-foreground"
                     : "border border-border bg-card text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className="h-4 w-4" aria-hidden="true" />
-                {label}
+                <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden="true" />
+                <span className="whitespace-nowrap">{label}</span>
                 {count > 0 && (
                   <span
                     className={`ml-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none ${
