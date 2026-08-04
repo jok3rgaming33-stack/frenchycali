@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
+    "@vercel/blob": "^2.6.1",
+    "better-auth": "^1.6.25",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.3"
+  }
+}
