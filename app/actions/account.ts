@@ -13,7 +13,7 @@ import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { notifyVendor } from "@/lib/push"
 import { getClientIp, isVpnOrProxy } from "@/lib/ip-check"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
-import { USER_FLAGS } from "@/lib/user-flags"
+import { USER_FLAGS_LIST } from "@/lib/user-flags"
 
 async function recordLogin(userToken: string) {
   try {
@@ -123,7 +123,7 @@ export async function setUserNickname(id: number, nickname: string) {
 
 export async function setUserFlags(id: number, flags: string[]) {
   if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
-  const clean = Array.from(new Set(flags.filter((f) => (USER_FLAGS as readonly string[]).includes(f))))
+  const clean = Array.from(new Set(flags.filter((f) => USER_FLAGS_LIST.includes(f as typeof USER_FLAGS_LIST[number]))))
   await db.update(users).set({ flags: clean }).where(eq(users.id, id))
   revalidatePath("/admin")
   return { ok: true as const, flags: clean }

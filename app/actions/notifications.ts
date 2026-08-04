@@ -16,9 +16,9 @@ export async function listBroadcastNotifications(): Promise<BroadcastNotificatio
 
 export async function sendBroadcast(data: { title: string; body: string; recipients?: string }) {
   if (!(await isAdminAuthenticated())) return { ok: false as const }
-  const sentCount = await notifyAllClients({ title: data.title, body: data.body })
+  await notifyAllClients({ title: data.title, body: data.body })
   const [row] = await db.insert(broadcastNotifications).values({
-    title: data.title, body: data.body, recipients: data.recipients || "all", sentCount,
+    title: data.title, body: data.body, recipients: data.recipients || "all",
   }).returning()
   revalidatePath("/admin")
   return { ok: true as const, row }
@@ -40,3 +40,5 @@ export async function unsubscribePush(endpoint: string) {
 export async function getVapidPublicKey() {
   return { key: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null }
 }
+
+export const listBroadcasts = listBroadcastNotifications

@@ -54,6 +54,10 @@ export async function toggleNews(id: number, active: boolean) {
   return { ok: true as const }
 }
 
+// Aliases expected by admin-panel
+export const listNews = listAllNews
+export const updateNewsActive = toggleNews
+
 export async function deleteNews(id: number) {
   if (!(await isAdminAuthenticated())) return { ok: false as const }
   await db.delete(newsSlides).where(eq(newsSlides.newsId, id))

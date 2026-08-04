@@ -11,3 +11,5 @@ export async function getLoginLogs(): Promise<LoginLogRow[]> {
   if (!(await isAdminAuthenticated())) return []
   return db.select().from(loginLogs).orderBy(desc(loginLogs.createdAt)).limit(500)
 }
+
+export const listLoginLogs = getLoginLogs

@@ -114,6 +114,11 @@ export async function validatePromoCode(code: string, userToken: string, subtota
   return { ok: false as const, error: "Code invalide ou déjà utilisé." }
 }
 
+export async function getAdminProducts() {
+  if (!(await isAdminAuthenticated())) return []
+  return db.select().from(products).orderBy(asc(products.sortOrder))
+}
+
 export async function generateLoyaltyCode(userToken: string, reward: { points: number; discount: number; minAmount: number }) {
   if (!userToken) return { ok: false as const }
   const { loyaltyCodes, users } = await import("@/lib/db/schema")
