@@ -106,48 +106,138 @@ export function ShopPage({ shop, initialProducts }: Props) {
     )
   }
 
+  const navItems = [
+    { label: "NOS PRODUITS",       icon: <ShoppingCart style={{width:14,height:14}} />, action: () => { setView("shop"); setMobileMenuOpen(false) } },
+    { label: "MESSAGERIE",         icon: <MessageCircle style={{width:14,height:14}} />, action: () => { setView("orders"); setMobileMenuOpen(false) } },
+    { label: "LIVRAISON / MEET-UP",icon: <Truck style={{width:14,height:14}} />, action: () => { setView("orders"); setMobileMenuOpen(false) } },
+    { label: "MES COMMANDES",      icon: <Package style={{width:14,height:14}} />, action: () => { setView("orders"); setMobileMenuOpen(false) } },
+    { label: "ESPACE FIDÉLITÉ",    icon: <Heart style={{width:14,height:14}} />, action: () => { setView("orders"); setMobileMenuOpen(false) } },
+    { label: "COMMENT ÇA MARCHE", icon: <HelpCircle style={{width:14,height:14}} />, action: () => { setView("orders"); setMobileMenuOpen(false) } },
+  ]
+
   return (
     <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, color: isDelivery ? "#f0f8ff" : "#f5e8c7", fontFamily:"Inter,system-ui,sans-serif", position:"relative" }}>
+      <style>{`
+        @media (min-width: 768px) {
+          .desktop-nav-right { display: flex !important; }
+          .mobile-nav-right  { display: none !important; }
+          .desktop-nav-bar   { display: flex !important; }
+        }
+        @media (max-width: 767px) {
+          .desktop-nav-right { display: none !important; }
+          .mobile-nav-right  { display: flex !important; }
+          .desktop-nav-bar   { display: none !important; }
+        }
+      `}</style>
       <ParticlesCanvas theme={theme} />
 
-      {/* HEADER */}
-      <header style={{ position:"sticky", top:0, zIndex:20, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.92)":"rgba(15,13,7,.92)", backdropFilter:"blur(12px)" }}>
-        <div style={{ maxWidth:1100, margin:"0 auto", padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <img src={logo} alt={shopLabel} style={{ width:36, height:36, borderRadius:10, objectFit:"cover" }} />
-            <span style={{ fontFamily:"Orbitron,sans-serif", fontWeight:900, fontSize:14, letterSpacing:"0.1em", textTransform:"uppercase",
+      {/* ══ NAVBAR ══ */}
+      <header style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", backdropFilter:"blur(14px)" }}>
+
+        {/* Top row: logo + mobile controls */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", maxWidth:1400, margin:"0 auto" }}>
+          {/* Logo */}
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+            <img src={logo} alt={shopLabel} style={{ width:34, height:34, borderRadius:8, objectFit:"cover", border:`1px solid ${cardBorder}` }} />
+            <span style={{ fontFamily:"Orbitron,sans-serif", fontWeight:900, fontSize:13, letterSpacing:"0.1em",
               background:`linear-gradient(90deg,${accentColor},${primaryColor})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
               {shopLabel}
             </span>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+
+          {/* Desktop right cluster */}
+          <div className="desktop-nav-right" style={{ display:"flex", alignItems:"center", gap:6 }}>
             {stats && (
-              <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", borderRadius:999, border:`1px solid ${cardBorder}`, background:"rgba(255,202,40,.06)", fontSize:12 }}>
-                <Star style={{ width:12, height:12, color:accentColor }} />
+              <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", borderRadius:999, border:`1px solid ${cardBorder}`, fontSize:11 }}>
+                <Star style={{ width:11, height:11, color:accentColor }} />
                 <span style={{ color:accentColor, fontWeight:700 }}>{stats.points}</span>
-                <span style={{ color:"rgba(200,190,170,.6)" }}>pts</span>
+                <span style={{ color:"rgba(200,190,170,.5)", fontSize:10 }}>pts</span>
               </div>
             )}
-            {cartCount > 0 && (
-              <button onClick={() => setView("cart")} style={{ position:"relative", background:`rgba(255,202,40,.12)`, border:`1px solid ${cardBorder}`, borderRadius:999, padding:"6px 12px", display:"flex", alignItems:"center", gap:6, cursor:"pointer", color: isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13 }}>
-                <ShoppingCart style={{ width:16, height:16 }} />
-                <span style={{ position:"absolute", top:-6, right:-6, background:"#ef4444", color:"#fff", borderRadius:"50%", width:18, height:18, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700 }}>{cartCount}</span>
-              </button>
-            )}
-            <button onClick={() => setView("orders")} style={{ background:"transparent", border:`1px solid ${cardBorder}`, borderRadius:999, padding:"6px 12px", cursor:"pointer", color:isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, display:"flex", alignItems:"center", gap:6 }}>
-              <Package style={{ width:14, height:14 }} />
+            <button onClick={() => { setView("login"); setMobileMenuOpen(false) }}
+              style={{ display:"flex", alignItems:"center", gap:6, background:"transparent", border:`1px solid ${cardBorder}`, borderRadius:999, padding:"5px 12px", cursor:"pointer", color:"rgba(200,190,170,.8)", fontSize:12 }}>
+              <User style={{ width:13, height:13 }} />
+              <span style={{ maxWidth:72, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{userPseudo}</span>
             </button>
-            <button onClick={() => setView("login")} style={{ background:"transparent", border:`1px solid ${cardBorder}`, borderRadius:999, padding:"6px 12px", cursor:"pointer", color:"rgba(200,190,170,.7)", fontSize:13, display:"flex", alignItems:"center", gap:6 }}>
-              <User style={{ width:14, height:14 }} />
-              <span style={{ maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{userPseudo}</span>
+            {/* PANEL ADMIN — visible pour tous, protégé par token côté /admin */}
+            <a href="/admin/login"
+              style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 14px", borderRadius:999,
+                background:`rgba(${isDelivery?"139,0,255":"34,197,94"},.18)`,
+                border:`1px solid rgba(${isDelivery?"139,0,255":"34,197,94"},.35)`,
+                color: isDelivery ? "#bf7fff" : "#4ade80",
+                textDecoration:"none", fontSize:12, fontWeight:700, letterSpacing:"0.06em" }}>
+              <Shield style={{ width:13, height:13 }} />
+              PANEL ADMIN
+            </a>
+            {/* Panier */}
+            <button onClick={() => { setView("cart"); setMobileMenuOpen(false) }}
+              style={{ position:"relative", display:"flex", alignItems:"center", gap:6, background:cartCount>0?`rgba(${isDelivery?"0,255,157":"255,202,40"},.14)`:"transparent",
+                border:`1px solid ${cartCount>0?accentColor:cardBorder}`, borderRadius:999, padding:"6px 14px", cursor:"pointer",
+                color:cartCount>0?accentColor:"rgba(200,190,170,.7)", fontSize:12, fontWeight:700 }}>
+              <ShoppingCart style={{ width:14, height:14 }} />
+              <span>MON PANIER</span>
+              {cartCount > 0 && (
+                <span style={{ marginLeft:2, background:"#ef4444", color:"#fff", borderRadius:"50%", width:17, height:17,
+                  display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700 }}>{cartCount}</span>
+              )}
             </button>
-            {isAdmin && (
-              <a href="/admin" style={{ background:`rgba(${isDelivery?"139,0,255":"255,202,40"},.15)`, border:`1px solid ${cardBorder}`, borderRadius:999, padding:"6px 12px", textDecoration:"none", color:accentColor, fontSize:12, fontWeight:600 }}>
-                Admin
-              </a>
-            )}
+          </div>
+
+          {/* Mobile right cluster */}
+          <div style={{ display:"flex", alignItems:"center", gap:8 }} className="mobile-nav-right">
+            <button onClick={() => { setView("cart"); setMobileMenuOpen(false) }}
+              style={{ position:"relative", background:"transparent", border:`1px solid ${cartCount>0?accentColor:cardBorder}`, borderRadius:999, padding:"7px 10px", cursor:"pointer", color:cartCount>0?accentColor:"rgba(200,190,170,.7)", display:"flex", alignItems:"center" }}>
+              <ShoppingCart style={{ width:16, height:16 }} />
+              {cartCount > 0 && (
+                <span style={{ position:"absolute", top:-5, right:-5, background:"#ef4444", color:"#fff", borderRadius:"50%", width:16, height:16,
+                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700 }}>{cartCount}</span>
+              )}
+            </button>
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              style={{ background:"transparent", border:`1px solid ${cardBorder}`, borderRadius:10, padding:"7px 10px", cursor:"pointer", color:"rgba(200,190,170,.8)", display:"flex", alignItems:"center" }}>
+              {mobileMenuOpen ? <XIcon style={{ width:18, height:18 }} /> : <Menu style={{ width:18, height:18 }} />}
+            </button>
           </div>
         </div>
+
+        {/* Desktop nav links row */}
+        <nav className="desktop-nav-bar" style={{ borderTop:`1px solid ${cardBorder}`, padding:"0 16px", maxWidth:1400, margin:"0 auto", display:"flex", alignItems:"stretch", gap:0, overflowX:"auto", scrollbarWidth:"none" }}>
+          {navItems.map((item) => (
+            <button key={item.label} onClick={item.action}
+              style={{ display:"flex", alignItems:"center", gap:7, padding:"11px 14px", background:"transparent", border:"none",
+                color:"rgba(200,190,170,.75)", fontSize:11, fontWeight:700, letterSpacing:"0.07em", cursor:"pointer",
+                whiteSpace:"nowrap", borderBottom:`2px solid transparent`, transition:"all .2s",
+                textTransform:"uppercase" as const }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = accentColor; (e.currentTarget as HTMLElement).style.borderBottomColor = accentColor }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(200,190,170,.75)"; (e.currentTarget as HTMLElement).style.borderBottomColor = "transparent" }}>
+              {item.icon}{item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Mobile dropdown menu */}
+        {mobileMenuOpen && (
+          <nav style={{ borderTop:`1px solid ${cardBorder}`, padding:"8px 0", background:isDelivery?"rgba(10,0,18,.98)":"rgba(15,13,7,.98)" }}>
+            {navItems.map((item) => (
+              <button key={item.label} onClick={item.action}
+                style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"14px 20px", background:"transparent", border:"none",
+                  color:"rgba(200,190,170,.85)", fontSize:14, fontWeight:700, letterSpacing:"0.06em", cursor:"pointer", textAlign:"left" as const, textTransform:"uppercase" as const }}>
+                {item.icon}{item.label}
+              </button>
+            ))}
+            <div style={{ height:1, background:cardBorder, margin:"6px 20px" }} />
+            <a href="/admin/login"
+              style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 20px",
+                color: isDelivery ? "#bf7fff" : "#4ade80", fontSize:14, fontWeight:700, textDecoration:"none", letterSpacing:"0.06em", textTransform:"uppercase" as const }}>
+              <Shield style={{ width:16, height:16 }} />PANEL ADMIN
+            </a>
+            <button onClick={() => { setView("login"); setMobileMenuOpen(false) }}
+              style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"14px 20px", background:"transparent", border:"none",
+                color:"rgba(200,190,170,.6)", fontSize:14, fontWeight:600, cursor:"pointer", textAlign:"left" as const }}>
+              <User style={{ width:16, height:16 }} />{userPseudo}
+            </button>
+          </nav>
+        )}
       </header>
 
       {/* VIEWS */}
@@ -164,7 +254,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
       )}
 
       {view === "shop" && (
-        <main style={{ maxWidth:1100, margin:"0 auto", padding:"24px 16px 100px" }}>
+        <main style={{ maxWidth:1100, margin:"0 auto", padding:"24px 16px 40px" }}>
           {/* Section filters — sticky desktop bar */}
           {sections.length > 0 && (
             <>
@@ -182,21 +272,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 ))}
               </div>
 
-              {/* Mobile: floating pill bar at bottom */}
-              <div style={{ position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", zIndex:30, display:"flex", gap:6, padding:"8px 14px", borderRadius:999, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", border:`1px solid ${cardBorder}`, backdropFilter:"blur(16px)", boxShadow:"0 8px 32px rgba(0,0,0,.7)", overflowX:"auto", maxWidth:"calc(100vw - 32px)", scrollbarWidth:"none",
-                // hide on desktop
-              }}>
-                <button onClick={() => setActiveSection("all")}
-                  style={{ flexShrink:0, padding:"5px 14px", borderRadius:999, border:"none", background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":isDelivery?"rgba(240,248,255,.7)":"rgba(245,232,199,.7)", fontSize:12, cursor:"pointer", fontWeight:700, transition:"all .2s", whiteSpace:"nowrap" }}>
-                  Tout
-                </button>
-                {sections.map((s) => (
-                  <button key={s} onClick={() => setActiveSection(s)}
-                    style={{ flexShrink:0, padding:"5px 14px", borderRadius:999, border:"none", background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":isDelivery?"rgba(240,248,255,.7)":"rgba(245,232,199,.7)", fontSize:12, cursor:"pointer", fontWeight:activeSection===s?700:400, transition:"all .2s", whiteSpace:"nowrap" }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
+
             </>
           )}
 
