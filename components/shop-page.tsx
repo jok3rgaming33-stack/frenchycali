@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ShoppingCart, User, LogOut, Package, Star, Tag, MessageCircle, Bell, ChevronLeft } from "lucide-react"
+import { ShoppingCart, User, Package, Star, MessageCircle, Truck, Heart, HelpCircle, Shield, Menu, X as XIcon } from "lucide-react"
 import type { Product } from "@/lib/db/schema"
 import { LoginPage } from "@/components/login-page"
 import { CheckoutCart } from "@/components/checkout-cart"
@@ -50,6 +50,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const [stats, setStats] = useState<{ points: number; active: number; past: number } | null>(null)
   const [activeSection, setActiveSection] = useState<string>("all")
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem("authToken")
