@@ -603,7 +603,7 @@ function MediaUploader({ form, setForm }: { form: FormState; setForm: (f: FormSt
     const added: ProductMedia[] = []
     for (const file of Array.from(files)) {
       try {
-        const { url, type } = await uploadMedia(file)
+        const { url, type } = await uploadMedia(file, { folder: "products" })
         added.push({ type, url })
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Echec de l'envoi.")

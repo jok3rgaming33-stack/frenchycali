@@ -265,7 +265,7 @@ export function AdminNews() {
           setUploadError("Formats acceptés : images et vidéos.")
           continue
         }
-        const { url, type } = await uploadMedia(file)
+        const { url, type } = await uploadMedia(file, { folder: "news" })
         added.push({ url, type })
       }
       if (added.length) {

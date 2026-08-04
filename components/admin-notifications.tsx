@@ -75,7 +75,7 @@ export function AdminNotifications({ initialHistory, users }: Props) {
           setUploadErr("Formats acceptés : images et vidéos.")
           continue
         }
-        const item = await uploadMedia(file)
+        const item = await uploadMedia(file, { folder: "notifications" })
         added.push({ url: item.url, type: item.type })
       }
       if (added.length) setMedia((prev) => [...prev, ...added])
