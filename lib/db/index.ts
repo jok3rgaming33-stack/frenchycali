@@ -2,15 +2,15 @@ import { drizzle } from "drizzle-orm/node-postgres"
 import { Pool } from "pg"
 import * as schema from "./schema"
 
-// Neon PostgreSQL connection — SSL required for neon.tech hosts
-const isNeon = (process.env.DATABASE_URL ?? "").includes("neon.tech")
+const url = process.env.DATABASE_URL
+if (!url) throw new Error("DATABASE_URL is not set — check .env.development.local")
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: isNeon ? true : false,
+  connectionString: url,
+  ssl: url.includes("neon.tech") ? true : false,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 8000,
 })
 
 export const db = drizzle(pool, { schema })
