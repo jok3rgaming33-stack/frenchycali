@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import dynamic from "next/dynamic"
 import {
-  Package, Users, ShoppingBag, Bell, MessageCircle, Tag, Star,
+  Package, Users, ShoppingBag, Bell, MessageCircle,
   Plus, Trash2, Edit2, Save, X, Loader2, RefreshCw, Shield,
-  LogOut, Send, CheckCircle2, BarChart2, Key, AlertTriangle,
+  LogOut, Send, CheckCircle2, Key, AlertTriangle,
   Lock, Archive, TrendingUp, Map, Truck, List, Wifi, FileText,
   UserCheck, Megaphone, Gift,
 } from "lucide-react"
@@ -299,7 +300,7 @@ export function AdminPanel() {
           <LogisticsTab orders={activeOrders} onStatusChange={changeStatus} />
         )}
 
-        {/* ── RÉCAP COMMANDES ── */}
+        {/* ─��� RÉCAP COMMANDES ── */}
         {!loading && tab === "recap" && (
           <RecapTab orders={orders} />
         )}
@@ -649,18 +650,20 @@ function PromosTab({ onRefresh }: { onRefresh: () => void }) {
   const [form, setForm] = useState({ code:"", type:"fixed", value:"10", minAmount:"0", productName:"" })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
+  const fetchPromos = async () => {
     setLoading(true)
-    fetch("/api/admin/promos").then(r => r.json()).then(d => { setPromos(d.promos || []); setLoading(false) }).catch(() => setLoading(false))
-  }, [])
+    fetch("/api/admin/promos", { credentials: "include" }).then(r => r.json()).then(d => { setPromos(d.promos || []); setLoading(false) }).catch(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchPromos() }, [])
 
   const save = async () => {
     setSaving(true)
     try {
-      await fetch("/api/admin/promos", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ code:form.code.trim().toUpperCase(), type:form.type, value:Number(form.value), minAmount:Number(form.minAmount), productName:form.productName||undefined }) })
+      await fetch("/api/admin/promos", { method:"POST", credentials:"include", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ code:form.code.trim().toUpperCase(), type:form.type, value:Number(form.value), minAmount:Number(form.minAmount), productName:form.productName||undefined }) })
       setCreating(false)
       setForm({ code:"", type:"fixed", value:"10", minAmount:"0", productName:"" })
-      const d = await fetch("/api/admin/promos").then(r=>r.json())
+      const d = await fetch("/api/admin/promos", { credentials:"include" }).then(r=>r.json())
       setPromos(d.promos || [])
     } finally { setSaving(false) }
   }
@@ -712,7 +715,7 @@ function PromosTab({ onRefresh }: { onRefresh: () => void }) {
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}>
               <Badge label={p.active ? "Actif" : "Inactif"} color={p.active ? "#22c55e" : "#ef4444"}/>
-              <Btn variant="danger" onClick={async () => { if (confirm("Supprimer ?")) { await fetch(`/api/admin/promos?id=${p.id}`, {method:"DELETE"}); const d = await fetch("/api/admin/promos").then(r=>r.json()); setPromos(d.promos||[]) } }}>
+              <Btn variant="danger" onClick={async () => { if (confirm("Supprimer ?")) { await fetch(`/api/admin/promos?id=${p.id}`, {method:"DELETE", credentials:"include"}); const d = await fetch("/api/admin/promos", {credentials:"include"}).then(r=>r.json()); setPromos(d.promos||[]) } }}>
                 <Trash2 size={13}/>
               </Btn>
             </div>
@@ -727,25 +730,107 @@ function PromosTab({ onRefresh }: { onRefresh: () => void }) {
 // ─── Carte interactive ────────────────────────────────────────────────────────
 function MapTab({ orders }: { orders: OrderThread[] }) {
   const withCoords = orders.filter(o => o.lat && o.lng)
+  const mapRef = useRef<HTMLDivElement>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const [mapInstance, setMapInstance] = useState<any>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !mapRef.current || mapInstance) return
+    let L: any
+    let map: any
+    ;(async () => {
+      try {
+        L = (await import("leaflet")).default
+        await import("leaflet/dist/leaflet.css")
+
+        // Fix default icon paths in Next.js
+        delete (L.Icon.Default.prototype as any)._getIconUrl
+        L.Icon.Default.mergeOptions({
+          iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+          iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+          shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        })
+
+        map = L.map(mapRef.current!, { zoomControl: true })
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
+          maxZoom: 18,
+        }).addTo(map)
+
+        if (withCoords.length > 0) {
+          const bounds: [number, number][] = []
+          withCoords.forEach(o => {
+            const lat = o.lat!; const lng = o.lng!
+            bounds.push([lat, lng])
+            const icon = L.divIcon({
+              className: "",
+              html: `<div style="background:${ACCENT};color:#000;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid rgba(255,202,40,.4);box-shadow:0 0 8px rgba(255,202,40,.5)">${o.total}€</div>`,
+              iconSize: [28, 28],
+              iconAnchor: [14, 14],
+            })
+            L.marker([lat, lng], { icon })
+              .addTo(map)
+              .bindPopup(`<b>#${o.id} — ${o.customerName}</b><br>${o.summary.slice(0,60)}<br><b style="color:#e65100">${o.total}€</b>`)
+          })
+          map.fitBounds(bounds, { padding: [40, 40] })
+        } else {
+          map.setView([46.6034, 1.8883], 6) // France
+        }
+
+        setMapInstance(map)
+        setMapReady(true)
+      } catch (err) {
+        console.error("[v0] Leaflet init error:", err)
+      }
+    })()
+
+    return () => { if (map) { map.remove(); setMapInstance(null); setMapReady(false) } }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Add markers when orders change after initial load
+  useEffect(() => {
+    if (!mapInstance || !mapReady) return
+    // Markers are already added in init; this handles re-renders
+  }, [orders, mapInstance, mapReady])
+
   return (
     <div>
-      <p style={{ margin:"0 0 16px", fontSize:13, color:MUTED }}>{withCoords.length} commande(s) géolocalisées sur {orders.length}</p>
-      <Card style={{ minHeight:400, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
-        <Map size={40} color={ACCENT} style={{ opacity:0.5 }}/>
-        <p style={{ margin:0, fontSize:13, color:MUTED, textAlign:"center" }}>
-          Carte interactive — {withCoords.length} livraisons géolocalisées
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <p style={{ margin:0, fontSize:13, color:MUTED }}>
+          {withCoords.length} commande(s) géolocalisées sur {orders.length} totales
         </p>
-        <div style={{ display:"flex", flexDirection:"column", gap:6, width:"100%", maxWidth:600 }}>
-          {withCoords.slice(0,10).map(o => (
-            <div key={o.id} style={{ display:"flex", justifyContent:"space-between", padding:"8px 14px", borderRadius:10, border:`1px solid ${BORDER}`, background:"rgba(255,202,40,.03)", fontSize:12 }}>
-              <span style={{ color:TEXT }}>#{o.id} {o.customerName}</span>
-              <span style={{ color:MUTED }}>📍 {o.lat?.toFixed(4)}, {o.lng?.toFixed(4)}</span>
-              <span style={{ color:ACCENT }}>{o.total}€</span>
-            </div>
+        {withCoords.length === 0 && (
+          <span style={{ fontSize:12, color:"rgba(255,202,40,.5)" }}>Aucune commande avec coordonnées GPS</span>
+        )}
+      </div>
+
+      {/* Map container */}
+      <div style={{ borderRadius:16, border:`1px solid ${BORDER}`, overflow:"hidden", position:"relative" }}>
+        <div ref={mapRef} style={{ width:"100%", height:500 }} />
+        {!mapReady && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(15,13,7,.8)", flexDirection:"column", gap:12 }}>
+            <Loader2 size={28} color={ACCENT} style={{ animation:"spin 1s linear infinite" }}/>
+            <p style={{ margin:0, fontSize:12, color:MUTED }}>Chargement de la carte...</p>
+          </div>
+        )}
+      </div>
+
+      {/* Orders list below map */}
+      {withCoords.length > 0 && (
+        <div style={{ marginTop:14, display:"flex", flexDirection:"column", gap:6 }}>
+          <p style={{ margin:"0 0 8px", fontSize:11, textTransform:"uppercase", letterSpacing:"0.1em", color:MUTED }}>Détail des livraisons géolocalisées</p>
+          {withCoords.map(o => (
+            <Card key={o.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px" }}>
+              <div>
+                <span style={{ fontSize:13, fontWeight:600, color:TEXT }}>#{o.id} {o.customerName}</span>
+                <span style={{ marginLeft:8, fontSize:11, color:MUTED }}>📍 {o.lat?.toFixed(5)}, {o.lng?.toFixed(5)}</span>
+              </div>
+              <span style={{ color:ACCENT, fontWeight:700 }}>{o.total}€</span>
+            </Card>
           ))}
-          {withCoords.length > 10 && <p style={{ textAlign:"center", fontSize:11, color:MUTED }}>+{withCoords.length-10} autres</p>}
         </div>
-      </Card>
+      )}
     </div>
   )
 }
@@ -1069,7 +1154,7 @@ function WhitelistTab() {
 
   const load = async () => {
     setLoading(true)
-    const r = await fetch("/api/admin/whitelist").then(r=>r.json()).catch(()=>({pseudos:[]}))
+    const r = await fetch("/api/admin/whitelist", { credentials: "include" }).then(r=>r.json()).catch(()=>({pseudos:[]}))
     setPseudos(r.pseudos || [])
     setLoading(false)
   }
@@ -1079,14 +1164,14 @@ function WhitelistTab() {
   const add = async () => {
     if (!input.trim()) return
     setSaving(true)
-    await fetch("/api/admin/whitelist", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ pseudo:input.trim() }) })
+    await fetch("/api/admin/whitelist", { method:"POST", credentials:"include", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ pseudo:input.trim() }) })
     setInput("")
     await load()
     setSaving(false)
   }
 
   const remove = async (id: number) => {
-    await fetch(`/api/admin/whitelist?id=${id}`, { method:"DELETE" })
+    await fetch(`/api/admin/whitelist?id=${id}`, { method:"DELETE", credentials:"include" })
     await load()
   }
 

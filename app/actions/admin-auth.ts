@@ -32,11 +32,11 @@ export async function adminLogin(token: string): Promise<{ ok: boolean; error?: 
   }
   if (!isEnvToken && !isDbToken) return { ok: false, error: "Token invalide." }
   const cookieStore = await cookies()
+  // Session cookie — expires when browser/app is closed, no maxAge/expires
   cookieStore.set("admin_token", token.trim(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 30,
     path: "/",
   })
   return { ok: true }
