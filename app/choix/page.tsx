@@ -64,11 +64,12 @@ export default function ChoixPage() {
         <div style={{ display:"flex", gap:24, flexWrap:"wrap", justifyContent:"center" }}>
           {SOCIALS.map((s) => (
             <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer"
-              style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, textDecoration:"none", color:"rgba(201,167,108,.8)", fontSize:12, fontWeight:500, transition:"all .3s" }}>
-              <div style={{ width:50, height:50, borderRadius:"50%", background:"rgba(255,202,40,.08)", border:"1px solid rgba(255,202,40,.18)", display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(5px)" }}>
-                <img src={s.img} alt={s.label} style={{ width:28, height:28, objectFit:"contain" }} />
+              style={{ display:"flex", flexDirection:"column", alignItems:"center", textDecoration:"none", transition:"all .3s" }}>
+              <div style={{ width:52, height:52, borderRadius:"50%", background:"rgba(255,202,40,.08)", border:"1px solid rgba(255,202,40,.18)", display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(5px)", transition:"all .3s" }}
+                onMouseEnter={(e)=>{ (e.currentTarget as HTMLElement).style.boxShadow="0 0 18px rgba(255,202,40,.45)"; (e.currentTarget as HTMLElement).style.borderColor="rgba(255,202,40,.5)" }}
+                onMouseLeave={(e)=>{ (e.currentTarget as HTMLElement).style.boxShadow="none"; (e.currentTarget as HTMLElement).style.borderColor="rgba(255,202,40,.18)" }}>
+                <img src={s.img} alt={s.label} style={{ width:30, height:30, objectFit:"contain" }} />
               </div>
-              {s.label}
             </a>
           ))}
         </div>

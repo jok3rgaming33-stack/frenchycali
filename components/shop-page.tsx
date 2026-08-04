@@ -163,19 +163,40 @@ export function ShopPage({ shop, initialProducts }: Props) {
       )}
 
       {view === "shop" && (
-        <main style={{ maxWidth:1100, margin:"0 auto", padding:"24px 16px" }}>
-          {/* Section filters */}
-          {sections.length > 1 && (
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:24 }}>
-              <button onClick={() => setActiveSection("all")} style={{ padding:"6px 16px", borderRadius:999, border:`1px solid ${cardBorder}`, background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":"rgba(200,190,170,.8)", fontSize:13, cursor:"pointer", fontWeight:activeSection==="all"?700:400 }}>
-                Tout
-              </button>
-              {sections.map((s) => (
-                <button key={s} onClick={() => setActiveSection(s)} style={{ padding:"6px 16px", borderRadius:999, border:`1px solid ${cardBorder}`, background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":"rgba(200,190,170,.8)", fontSize:13, cursor:"pointer", fontWeight:activeSection===s?700:400 }}>
-                  {s}
+        <main style={{ maxWidth:1100, margin:"0 auto", padding:"24px 16px 100px" }}>
+          {/* Section filters — sticky desktop bar */}
+          {sections.length > 0 && (
+            <>
+              {/* Desktop: sticky bar below header */}
+              <div style={{ position:"sticky", top:61, zIndex:10, margin:"0 -16px 24px", padding:"8px 16px", background: isDelivery?"rgba(10,0,18,.95)":"rgba(15,13,7,.95)", backdropFilter:"blur(10px)", borderBottom:`1px solid ${cardBorder}`, display:"flex", gap:8, overflowX:"auto", scrollbarWidth:"none" }}>
+                <button onClick={() => setActiveSection("all")}
+                  style={{ flexShrink:0, padding:"7px 18px", borderRadius:999, border:`1px solid ${activeSection==="all"?accentColor:cardBorder}`, background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:700, transition:"all .2s", whiteSpace:"nowrap" }}>
+                  Tout
                 </button>
-              ))}
-            </div>
+                {sections.map((s) => (
+                  <button key={s} onClick={() => setActiveSection(s)}
+                    style={{ flexShrink:0, padding:"7px 18px", borderRadius:999, border:`1px solid ${activeSection===s?accentColor:cardBorder}`, background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:activeSection===s?700:400, transition:"all .2s", whiteSpace:"nowrap" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              {/* Mobile: floating pill bar at bottom */}
+              <div style={{ position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)", zIndex:30, display:"flex", gap:6, padding:"8px 14px", borderRadius:999, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", border:`1px solid ${cardBorder}`, backdropFilter:"blur(16px)", boxShadow:"0 8px 32px rgba(0,0,0,.7)", overflowX:"auto", maxWidth:"calc(100vw - 32px)", scrollbarWidth:"none",
+                // hide on desktop
+              }}>
+                <button onClick={() => setActiveSection("all")}
+                  style={{ flexShrink:0, padding:"5px 14px", borderRadius:999, border:"none", background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":isDelivery?"rgba(240,248,255,.7)":"rgba(245,232,199,.7)", fontSize:12, cursor:"pointer", fontWeight:700, transition:"all .2s", whiteSpace:"nowrap" }}>
+                  Tout
+                </button>
+                {sections.map((s) => (
+                  <button key={s} onClick={() => setActiveSection(s)}
+                    style={{ flexShrink:0, padding:"5px 14px", borderRadius:999, border:"none", background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":isDelivery?"rgba(240,248,255,.7)":"rgba(245,232,199,.7)", fontSize:12, cursor:"pointer", fontWeight:activeSection===s?700:400, transition:"all .2s", whiteSpace:"nowrap" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           {/* Product grid */}
