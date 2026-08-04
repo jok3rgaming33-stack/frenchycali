@@ -79,6 +79,32 @@ export async function adminLogout() {
   redirect("/logout")
 }
 
+/** Compte client dédié à l'aperçu admin (Vue Client) — stable, sans limite IP/VPN. */
+const PREVIEW_TOKEN = "fc-admin-preview-client-v1"
+const PREVIEW_PSEUDO = "Apercu Admin"
+
+/**
+ * Démarre une session « Vue Client » pour le gestionnaire authentifié.
+ * Crée si besoin un compte client d'aperçu et renvoie token/pseudo pour localStorage.
+ */
+export async function startAdminClientPreview(): Promise<
+  { ok: true; token: string; pseudo: string } | { ok: false; error: string }
+> {
+  if (!(await isAdminAuthenticated())) {
+    return { ok: false, error: "Session admin requise. Reconnecte-toi au panel." }
+  }
+
+  const { users, reservedPseudos } = await import("@/lib/db/schema")
+
+  const existing = await db.select().from(users).where(eq(users.token, PREVIEW_TOKEN)).limit(1)
+  if (existing.length === 0) {
+    await db.insert(reservedPseudos).values({ pseudo: PREVIEW_PSEUDO }).onConflictDoNothing()
+    await db.insert(users).values({ token: PREVIEW_TOKEN, pseudo: PREVIEW_PSEUDO }).onConflictDoNothing()
+  }
+
+  return { ok: true, token: PREVIEW_TOKEN, pseudo: PREVIEW_PSEUDO }
+}
+
 // Action de formulaire pour la porte du panel admin (/admin).
 // Supporte token seul OU pseudo+mot de passe, protégé par Cloudflare Turnstile.
 export async function adminGateAction(_prevState: { error?: string } | null, formData: FormData) {

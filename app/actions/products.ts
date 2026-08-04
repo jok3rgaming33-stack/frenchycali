@@ -13,13 +13,22 @@ export async function listProducts(): Promise<Product[]> {
   return db.select().from(products).orderBy(asc(products.section), asc(products.sortOrder), asc(products.id))
 }
 
-/** Alias FrenchyCali — filtre optionnel par région boutique */
+/** Alias FrenchyCali — filtre optionnel par région boutique (31 / 94 / delivery / shop keys) */
 export async function getProducts(region?: string): Promise<Product[]> {
   const all = await listProducts()
   if (!region) return all
+  const key = region.toLowerCase()
+  const aliases =
+    key === "caliboyz31" || key === "31"
+      ? new Set(["31", "both", "caliboyz31"])
+      : key === "caliboyz94" || key === "94"
+        ? new Set(["94", "both", "caliboyz94"])
+        : key === "calidelivery" || key === "delivery"
+          ? new Set(["delivery", "both", "calidelivery"])
+          : new Set([key, "both"])
   return all.filter((p) => {
-    const r = (p as Product & { region?: string }).region ?? "both"
-    return r === region || r === "both" || r === "calidelivery" && region === "delivery"
+    const r = ((p as Product & { region?: string }).region ?? "both").toLowerCase()
+    return aliases.has(r)
   })
 }
 

@@ -8,6 +8,8 @@ import { CheckoutCart } from "@/components/checkout-cart"
 import { OrderTracker } from "@/components/order-tracker"
 import { ParticlesCanvas } from "@/components/particles-canvas"
 import { getCustomerStats } from "@/app/actions/account"
+import { startAdminClientPreview } from "@/app/actions/admin-auth"
+import { getProducts } from "@/app/actions/products"
 import { CartProvider } from "@/components/cart-provider"
 import { MessagerieModal } from "@/components/messagerie-modal"
 import { MyOrdersModal } from "@/components/my-orders-modal"
@@ -52,6 +54,10 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const [userToken, setUserToken] = useState("")
   const [userPseudo, setUserPseudo] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
+  const [previewMode, setPreviewMode] = useState(false)
+  const [previewBooting, setPreviewBooting] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [liveTick, setLiveTick] = useState(0)
 
   // UI states
   const [view, setView] = useState<"shop"|"cart"|"orders"|"login">("login")
@@ -72,20 +78,105 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
   const userData = { token: userToken || undefined, pseudo: userPseudo || undefined }
 
+  const enterAsClient = useCallback((token: string, pseudo: string, admin: boolean, preview: boolean) => {
+    localStorage.setItem("authToken", token)
+    localStorage.setItem("userPseudo", pseudo)
+    localStorage.setItem("isAdmin", admin ? "1" : "0")
+    if (preview) localStorage.setItem("adminPreview", "1")
+    else localStorage.removeItem("adminPreview")
+    setUserToken(token)
+    setUserPseudo(pseudo)
+    setIsAdmin(admin)
+    setPreviewMode(preview)
+    setAuthed(true)
+    setView("shop")
+  }, [])
+
+  // Entrée normale (localStorage) + mode aperçu admin (?preview=1)
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const wantPreview = params.get("preview") === "1" || localStorage.getItem("adminPreview") === "1"
+
+    if (wantPreview) {
+      setPreviewBooting(true)
+      setPreviewError(null)
+      ;(async () => {
+        try {
+          // Session déjà injectée par le panel admin
+          const existingToken = localStorage.getItem("authToken")
+          const existingPseudo = localStorage.getItem("userPseudo")
+          if (existingToken && existingPseudo && localStorage.getItem("adminPreview") === "1") {
+            enterAsClient(existingToken, existingPseudo, true, true)
+            setPreviewBooting(false)
+            // Nettoie l'URL sans recharger
+            if (params.get("preview") === "1") {
+              const url = new URL(window.location.href)
+              url.searchParams.delete("preview")
+              window.history.replaceState({}, "", url.pathname)
+            }
+            return
+          }
+          // Fallback : session cookie admin → crée le compte aperçu
+          const res = await startAdminClientPreview()
+          if (!res.ok) {
+            setPreviewError(res.error)
+            setPreviewBooting(false)
+            return
+          }
+          enterAsClient(res.token, res.pseudo, true, true)
+          if (params.get("preview") === "1") {
+            const url = new URL(window.location.href)
+            url.searchParams.delete("preview")
+            window.history.replaceState({}, "", url.pathname)
+          }
+        } catch {
+          setPreviewError("Impossible d'ouvrir l'aperçu admin.")
+        } finally {
+          setPreviewBooting(false)
+        }
+      })()
+      return
+    }
+
     const token = localStorage.getItem("authToken")
     const pseudo = localStorage.getItem("userPseudo")
     const admin = localStorage.getItem("isAdmin") === "1"
     if (token && pseudo) {
-      setUserToken(token); setUserPseudo(pseudo); setIsAdmin(admin); setAuthed(true); setView("shop")
+      enterAsClient(token, pseudo, admin, localStorage.getItem("adminPreview") === "1")
     }
-  }, [])
+  }, [enterAsClient])
 
   const loadStats = useCallback(async (token: string) => {
     try { setStats(await getCustomerStats(token)) } catch {}
   }, [])
 
   useEffect(() => { if (userToken) loadStats(userToken) }, [userToken, loadStats])
+
+  // Aperçu live : rafraîchit le catalogue toutes les 6 s
+  useEffect(() => {
+    if (!previewMode || !authed) return
+    let cancelled = false
+    const pull = async () => {
+      try {
+        const list = await getProducts(shop)
+        if (!cancelled) {
+          setProducts(list)
+          setLiveTick((t) => t + 1)
+        }
+      } catch { /* silencieux */ }
+    }
+    pull()
+    const id = setInterval(pull, 6000)
+    const onVis = () => {
+      if (document.visibilityState === "visible") pull()
+    }
+    document.addEventListener("visibilitychange", onVis)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      document.removeEventListener("visibilitychange", onVis)
+    }
+  }, [previewMode, authed, shop])
 
   const onLoginSuccess = (opts?: { openOrders?: boolean; openMessaging?: boolean }) => {
     const token = localStorage.getItem("authToken") || ""
@@ -98,8 +189,17 @@ export function ShopPage({ shop, initialProducts }: Props) {
   }
 
   const logout = () => {
-    localStorage.removeItem("authToken"); localStorage.removeItem("userPseudo"); localStorage.removeItem("isAdmin")
-    setAuthed(false); setUserToken(""); setUserPseudo(""); setIsAdmin(false); setCart([]); setView("login")
+    localStorage.removeItem("authToken")
+    localStorage.removeItem("userPseudo")
+    localStorage.removeItem("isAdmin")
+    localStorage.removeItem("adminPreview")
+    setAuthed(false)
+    setUserToken("")
+    setUserPseudo("")
+    setIsAdmin(false)
+    setPreviewMode(false)
+    setCart([])
+    setView("login")
   }
 
   const addToCart = (product: Product, variant: { qty: number; price: number }, variantLabel: string) => {
@@ -118,6 +218,27 @@ export function ShopPage({ shop, initialProducts }: Props) {
   // Group products by section
   const sections = Array.from(new Set(products.map(p => p.section))).filter(Boolean)
   const displayed = activeSection === "all" ? products : products.filter(p => p.section === activeSection)
+
+  if (previewBooting) {
+    return (
+      <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, display:"flex", alignItems:"center", justifyContent:"center", color: isDelivery ? "#f0f8ff" : "#f5e8c7" }}>
+        <ParticlesCanvas theme={theme} />
+        <p style={{ position:"relative", zIndex:2, fontSize:14, letterSpacing:"0.12em", textTransform:"uppercase" as const }}>
+          Ouverture aperçu admin…
+        </p>
+      </div>
+    )
+  }
+
+  if (previewError) {
+    return (
+      <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, color: isDelivery ? "#f0f8ff" : "#f5e8c7", padding:24 }}>
+        <ParticlesCanvas theme={theme} />
+        <p style={{ position:"relative", zIndex:2, maxWidth:360, textAlign:"center", fontSize:14 }}>{previewError}</p>
+        <a href="/admin" style={{ position:"relative", zIndex:2, color: accentColor, fontWeight:700 }}>← Retour panel admin</a>
+      </div>
+    )
+  }
 
   if (!authed || view === "login") {
     return (
@@ -143,6 +264,23 @@ export function ShopPage({ shop, initialProducts }: Props) {
     <div className={isDelivery ? "theme-delivery" : undefined} style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, color: isDelivery ? "#f0f8ff" : "#f5e8c7", fontFamily:"Inter,system-ui,sans-serif", position:"relative" }}>
       <AppBadgeSync />
       <RecoveryBanner token={userToken} onOpenMessaging={() => setMsgOpen(true)} />
+      {previewMode && (
+        <div style={{
+          position:"sticky", top:0, zIndex:50, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:10,
+          padding:"10px 16px", background: isDelivery ? "rgba(139,0,255,.92)" : "rgba(230,81,0,.92)", color:"#fff", fontSize:12, fontWeight:600,
+        }}>
+          <span>
+            Mode aperçu admin — {shopLabel} · catalogue live (maj auto)
+            {liveTick > 0 ? ` · sync #${liveTick}` : ""}
+          </span>
+          <span style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <a href="/caliboyz31?preview=1" style={{ color:"#fff", textDecoration:"underline" }}>31</a>
+            <a href="/caliboyz94?preview=1" style={{ color:"#fff", textDecoration:"underline" }}>94</a>
+            <a href="/calidelivery?preview=1" style={{ color:"#fff", textDecoration:"underline" }}>Delivery</a>
+            <a href="/admin" style={{ color:"#fff", textDecoration:"underline", fontWeight:800 }}>Panel admin</a>
+          </span>
+        </div>
+      )}
       <style>{`
         @media (min-width: 768px) {
           .desktop-nav-right { display: flex !important; }

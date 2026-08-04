@@ -24,12 +24,17 @@ import { AdminProfit } from "@/components/admin-profit"
 import type { ProfitSummary } from "@/app/actions/profit"
 import { AdminNotifications } from "@/components/admin-notifications"
 import type { BroadcastNotificationRow } from "@/app/actions/notifications"
-import { adminLogout } from "@/app/actions/admin-auth"
+import { adminLogout, startAdminClientPreview } from "@/app/actions/admin-auth"
 import { getAdminBadgeCounts } from "@/app/actions/messaging"
 import { AdminAppBadgeSync } from "@/components/app-badge-sync"
-import { MessageSquare, Map, ListOrdered, Users, TrendingUp, LogOut, Construction, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound } from "lucide-react"
-import Link from "next/link"
+import { MessageSquare, Map, ListOrdered, Users, TrendingUp, LogOut, Construction, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound, ChevronDown } from "lucide-react"
 import { PushToggle } from "@/components/push-toggle"
+
+const CLIENT_SHOPS = [
+  { href: "/caliboyz31?preview=1", label: "Cali Boyz 31", hint: "Interface gold 31" },
+  { href: "/caliboyz94?preview=1", label: "Cali Boyz 94", hint: "Interface gold 94" },
+  { href: "/calidelivery?preview=1", label: "CaliDelivery", hint: "Interface néon delivery" },
+] as const
 
 type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "carte" | "commandes" | "utilisateurs" | "verifications" | "recuperations" | "produits" | "promos" | "logistique" | "news" | "admins" | "profits" | "connexions" | "notifications" | "staff"
 
@@ -84,6 +89,9 @@ export function AdminPanel({
   initialStaff: StaffRow[]
 }) {
   const [tab, setTab] = useState<TabId>("commandes-en-cours")
+  const [vueClientOpen, setVueClientOpen] = useState(false)
+  const [vueClientBusy, setVueClientBusy] = useState(false)
+  const [vueClientError, setVueClientError] = useState<string | null>(null)
   const [badges, setBadges] = useState({
     orders: 0,
     locker: 0,
@@ -92,6 +100,28 @@ export function AdminPanel({
     recovery: 0,
     total: 0,
   })
+
+  const openClientPreview = async (href: string) => {
+    setVueClientBusy(true)
+    setVueClientError(null)
+    try {
+      const res = await startAdminClientPreview()
+      if (!res.ok) {
+        setVueClientError(res.error)
+        return
+      }
+      localStorage.setItem("authToken", res.token)
+      localStorage.setItem("userPseudo", res.pseudo)
+      localStorage.setItem("isAdmin", "1")
+      localStorage.setItem("adminPreview", "1")
+      setVueClientOpen(false)
+      window.open(href, "_blank", "noopener,noreferrer")
+    } catch {
+      setVueClientError("Impossible d'ouvrir l'aperçu. Réessaie.")
+    } finally {
+      setVueClientBusy(false)
+    }
+  }
 
   const refreshBadges = useCallback(async () => {
     try {
@@ -150,14 +180,49 @@ export function AdminPanel({
               )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
-            >
-              <Eye className="h-4 w-4" aria-hidden="true" />
-              Vue Client
-            </Link>
+          <div className="relative flex items-center gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setVueClientOpen((v) => !v)}
+                disabled={vueClientBusy}
+                className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-60"
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" />
+                {vueClientBusy ? "Ouverture…" : "Vue Client"}
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+              </button>
+              {vueClientOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Fermer le menu"
+                    className="fixed inset-0 z-40 cursor-default bg-transparent"
+                    onClick={() => setVueClientOpen(false)}
+                  />
+                  <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+                    <p className="border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
+                      Aperçu live des 3 interfaces (sans page login)
+                    </p>
+                    {CLIENT_SHOPS.map((s) => (
+                      <button
+                        key={s.href}
+                        type="button"
+                        disabled={vueClientBusy}
+                        onClick={() => openClientPreview(s.href)}
+                        className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2.5 text-left text-sm transition-colors last:border-0 hover:bg-secondary"
+                      >
+                        <span className="font-medium text-foreground">{s.label}</span>
+                        <span className="text-[11px] text-muted-foreground">{s.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            {vueClientError && (
+              <span className="hidden max-w-[160px] text-[11px] text-red-400 sm:inline">{vueClientError}</span>
+            )}
             <form action={adminLogout}>
               <button
                 type="submit"
