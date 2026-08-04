@@ -208,10 +208,16 @@ export function AdminPanel() {
         <h1 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:15, fontWeight:900, letterSpacing:"0.15em", background:`linear-gradient(90deg,${ACCENT},${ACCENT2})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
           ADMIN — FRENCHYCALI
         </h1>
-        <div style={{ display:"flex", gap:8 }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
           <Btn variant="ghost" onClick={() => loadTab(tab)}><RefreshCw size={14}/></Btn>
+          <a href="/caliboyz31"
+            style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 14px", borderRadius:10,
+              border:`1px solid rgba(34,197,94,.35)`, background:"rgba(34,197,94,.08)",
+              color:"#4ade80", fontSize:13, fontWeight:600, textDecoration:"none", cursor:"pointer" }}>
+            <Users size={13}/> Vue Client
+          </a>
           <Btn variant="danger" onClick={() => { localStorage.removeItem("authToken"); localStorage.removeItem("userPseudo"); localStorage.removeItem("isAdmin"); window.location.href = "/choix" }}>
-            <LogOut size={13}/> Quitter
+            <LogOut size={13}/> Déconnexion
           </Btn>
         </div>
       </header>
@@ -556,87 +562,166 @@ function NotificationsTab({ broadcasts, onRefresh }: { broadcasts: any[]; onRefr
 }
 
 // ─── Products Tab ─────────────────────────────────────────────────────────────
-function ProductsTab({ products, onRefresh }: { products: Product[]; onRefresh: () => void }) {
-  const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({ title:"", section:"featured", region:"both", description:"", fullDescription:"", image:"", stock:"10", variants:"[]", badges:"[]", discountType:"", discountValue:"", sortOrder:"0" })
-  const [saving, setSaving] = useState(false)
-  const [editId, setEditId] = useState<number|null>(null)
+const EMPTY_FORM = { title:"", section:"featured", region:"both", description:"", fullDescription:"", image:"", stock:"10", variants:"[]", badges:"[]", discountType:"", discountValue:"", sortOrder:"0" }
 
-  const save = async () => {
+function ProductForm({ initial, onSave, onCancel, title: formTitle }: {
+  initial: typeof EMPTY_FORM; onSave: (f: typeof EMPTY_FORM) => Promise<void>; onCancel: () => void; title: string
+}) {
+  const [form, setForm] = useState(initial)
+  const [saving, setSaving] = useState(false)
+  const set = (k: keyof typeof EMPTY_FORM) => (v: string) => setForm(f => ({ ...f, [k]: v }))
+  const sel = (k: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const selectStyle: React.CSSProperties = { width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${BORDER}`, background:"#1a1810", color:TEXT, fontSize:13, outline:"none" }
+
+  const handleSave = async () => {
     setSaving(true)
-    try {
-      let variants = []; try { variants = JSON.parse(form.variants) } catch {}
-      let badges = []; try { badges = JSON.parse(form.badges) } catch {}
-      await createProduct({ title:form.title, section:form.section, region:form.region,
-        description:form.description, fullDescription:form.fullDescription,
-        image:form.image||undefined, stock:Number(form.stock), variants, badges,
-        discountType:form.discountType||undefined, discountValue:form.discountValue?Number(form.discountValue):undefined,
-        sortOrder:Number(form.sortOrder) })
-      setCreating(false)
-      setForm({ title:"", section:"featured", region:"both", description:"", fullDescription:"", image:"", stock:"10", variants:"[]", badges:"[]", discountType:"", discountValue:"", sortOrder:"0" })
-      onRefresh()
-    } finally { setSaving(false) }
+    try { await onSave(form) } finally { setSaving(false) }
   }
 
   return (
+    <Card style={{ marginBottom:20 }}>
+      <h3 style={{ margin:"0 0 16px", fontSize:14, fontWeight:700, color:TEXT }}>{formTitle}</h3>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:12 }}>
+        <Field label="Nom du produit"><Input value={form.title} onChange={set("title")} placeholder="ex: OG Kush"/></Field>
+        <Field label="Section">
+          <select value={form.section} onChange={sel("section")} style={selectStyle}>
+            {["featured","weed","hash","moonrocks","edibles","prerolls","cbd","other"].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </Field>
+        <Field label="Région">
+          <select value={form.region} onChange={sel("region")} style={selectStyle}>
+            <option value="both">31 + 94</option>
+            <option value="31">31 seulement</option>
+            <option value="94">94 seulement</option>
+            <option value="delivery">CaliDelivery</option>
+          </select>
+        </Field>
+        <Field label="Stock"><Input value={form.stock} onChange={set("stock")} type="number"/></Field>
+        <Field label="Ordre tri"><Input value={form.sortOrder} onChange={set("sortOrder")} type="number"/></Field>
+        <Field label="Remise type">
+          <select value={form.discountType} onChange={sel("discountType")} style={selectStyle}>
+            <option value="">Aucune</option>
+            <option value="percent">Pourcentage (%)</option>
+            <option value="fixed">Montant fixe (€)</option>
+          </select>
+        </Field>
+        {form.discountType && (
+          <Field label={`Valeur remise ${form.discountType === "percent" ? "(%)" : "(€)"}`}>
+            <Input value={form.discountValue} onChange={set("discountValue")} type="number"/>
+          </Field>
+        )}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:12, marginTop:12 }}>
+        <Field label="Image URL"><Input value={form.image} onChange={set("image")} placeholder="https://..."/></Field>
+        <Field label="Description courte (card)"><Input value={form.description} onChange={set("description")} placeholder="Affiché sur la fiche produit"/></Field>
+        <Field label="Description complète (modal)"><Input value={form.fullDescription} onChange={set("fullDescription")} rows={3} placeholder="Détails complets..."/></Field>
+        <Field label={`Variantes JSON — ex: [{"qty":5,"price":30},{"qty":10,"price":55}]`}>
+          <Input value={form.variants} onChange={set("variants")} rows={2}/>
+        </Field>
+        <Field label={`Badges JSON — ex: ["New","Promo"]`}>
+          <Input value={form.badges} onChange={set("badges")} rows={1}/>
+        </Field>
+      </div>
+      <div style={{ marginTop:16, display:"flex", gap:10 }}>
+        <Btn variant="primary" onClick={handleSave} disabled={saving || !form.title.trim()}>
+          {saving ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Save size={13}/>} Enregistrer
+        </Btn>
+        <Btn variant="ghost" onClick={onCancel}>Annuler</Btn>
+      </div>
+    </Card>
+  )
+}
+
+function ProductsTab({ products, onRefresh }: { products: Product[]; onRefresh: () => void }) {
+  const [creating, setCreating] = useState(false)
+  const [editingId, setEditingId] = useState<number|null>(null)
+  const [search, setSearch] = useState("")
+
+  const toForm = (p: Product): typeof EMPTY_FORM => ({
+    title: p.title, section: p.section || "featured", region: p.region || "both",
+    description: p.description || "", fullDescription: p.fullDescription || "",
+    image: p.image || "", stock: String(p.stock ?? 0),
+    variants: JSON.stringify(p.variants || []),
+    badges: JSON.stringify(p.badges || []),
+    discountType: p.discountType || "", discountValue: p.discountValue != null ? String(p.discountValue) : "",
+    sortOrder: String(p.sortOrder ?? 0),
+  })
+
+  const parseForm = (f: typeof EMPTY_FORM) => {
+    let variants: any[] = []; try { variants = JSON.parse(f.variants) } catch {}
+    let badges: any[] = []; try { badges = JSON.parse(f.badges) } catch {}
+    return { title: f.title, section: f.section, region: f.region,
+      description: f.description, fullDescription: f.fullDescription,
+      image: f.image || undefined, stock: Number(f.stock), variants, badges,
+      discountType: f.discountType || undefined, discountValue: f.discountValue ? Number(f.discountValue) : undefined,
+      sortOrder: Number(f.sortOrder) }
+  }
+
+  const handleCreate = async (f: typeof EMPTY_FORM) => {
+    await createProduct(parseForm(f))
+    setCreating(false)
+    onRefresh()
+  }
+
+  const handleUpdate = async (id: number, f: typeof EMPTY_FORM) => {
+    await updateProduct(id, parseForm(f))
+    setEditingId(null)
+    onRefresh()
+  }
+
+  const filtered = products.filter(p =>
+    !search || p.title.toLowerCase().includes(search.toLowerCase()) || (p.section || "").toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-        <p style={{ margin:0, fontSize:13, color:MUTED }}>{products.length} produit(s)</p>
-        <Btn onClick={() => setCreating(!creating)}><Plus size={14}/> Nouveau produit</Btn>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, gap:12, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <p style={{ margin:0, fontSize:13, color:MUTED }}>{products.length} produit(s)</p>
+          <Input value={search} onChange={setSearch} placeholder="Rechercher..." style={{ width:200 }}/>
+        </div>
+        <Btn onClick={() => { setCreating(true); setEditingId(null) }}><Plus size={14}/> Nouveau produit</Btn>
       </div>
 
       {creating && (
-        <Card style={{ marginBottom:20 }}>
-          <h3 style={{ margin:"0 0 16px", fontSize:14 }}>Nouveau produit</h3>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            <Field label="Nom"><Input value={form.title} onChange={v => setForm(f=>({...f,title:v}))} placeholder="Nom du produit"/></Field>
-            <Field label="Section"><Input value={form.section} onChange={v => setForm(f=>({...f,section:v}))} placeholder="featured, weed..."/></Field>
-            <Field label="Région">
-              <select value={form.region} onChange={e => setForm(f=>({...f,region:e.target.value}))}
-                style={{ width:"100%", padding:"9px 12px", borderRadius:10, border:`1px solid ${BORDER}`, background:"#1a1810", color:TEXT, fontSize:13, outline:"none" }}>
-                <option value="both">31 + 94</option>
-                <option value="31">31 seulement</option>
-                <option value="94">94 seulement</option>
-                <option value="delivery">CaliDelivery</option>
-              </select>
-            </Field>
-            <Field label="Stock"><Input value={form.stock} onChange={v => setForm(f=>({...f,stock:v}))} type="number"/></Field>
-            <Field label="Image URL"><Input value={form.image} onChange={v => setForm(f=>({...f,image:v}))} placeholder="https://..."/></Field>
-            <Field label="Ordre tri"><Input value={form.sortOrder} onChange={v => setForm(f=>({...f,sortOrder:v}))} type="number"/></Field>
-          </div>
-          <div style={{ marginTop:12 }}>
-            <Field label="Description courte"><Input value={form.description} onChange={v => setForm(f=>({...f,description:v}))} placeholder="Description affichée sur la card"/></Field>
-          </div>
-          <div style={{ marginTop:12 }}>
-            <Field label={`Variantes JSON — ex: [{"qty":5,"price":30}]`}>
-              <Input value={form.variants} onChange={v => setForm(f=>({...f,variants:v}))} rows={2}/>
-            </Field>
-          </div>
-          <div style={{ marginTop:16, display:"flex", gap:10 }}>
-            <Btn variant="primary" onClick={save} disabled={saving}>
-              {saving ? <Loader2 size={13} style={{ animation:"spin 1s linear infinite" }}/> : <Save size={13}/>} Enregistrer
-            </Btn>
-            <Btn variant="ghost" onClick={() => setCreating(false)}>Annuler</Btn>
-          </div>
-        </Card>
+        <ProductForm initial={EMPTY_FORM} title="Nouveau produit"
+          onSave={handleCreate} onCancel={() => setCreating(false)} />
       )}
 
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-        {products.map(p => (
-          <Card key={p.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 16px" }}>
-            {p.image && <img src={p.image} alt={p.title} style={{ width:46, height:46, borderRadius:10, objectFit:"cover", flexShrink:0 }}/>}
-            <div style={{ flex:1 }}>
-              <p style={{ margin:"0 0 2px", fontSize:14, fontWeight:600, color:TEXT }}>{p.title}</p>
-              <p style={{ margin:0, fontSize:11, color:MUTED }}>{p.section} · région: {p.region} · stock: {p.stock}</p>
-            </div>
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-              <Badge label={`${p.stock} stock`} color={p.stock > 0 ? "#22c55e" : "#ef4444"}/>
-              <Btn variant="danger" onClick={async () => { if (confirm("Supprimer ?")) { await deleteProduct(p.id); onRefresh() } }}>
-                <Trash2 size={13}/>
-              </Btn>
-            </div>
-          </Card>
+        {filtered.map(p => (
+          <div key={p.id}>
+            {editingId === p.id ? (
+              <ProductForm initial={toForm(p)} title={`Modifier : ${p.title}`}
+                onSave={f => handleUpdate(p.id, f)} onCancel={() => setEditingId(null)} />
+            ) : (
+              <Card style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 16px" }}>
+                {p.image && <img src={p.image} alt={p.title} style={{ width:46, height:46, borderRadius:10, objectFit:"cover", flexShrink:0 }}/>}
+                {!p.image && <div style={{ width:46, height:46, borderRadius:10, background:"rgba(255,202,40,.08)", border:`1px solid ${BORDER}`, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}><Package size={20} color={MUTED}/></div>}
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:"0 0 2px", fontSize:14, fontWeight:600, color:TEXT }}>{p.title}</p>
+                  <p style={{ margin:"0 0 3px", fontSize:11, color:MUTED }}>
+                    Section: <strong style={{ color:"rgba(200,190,170,.8)" }}>{p.section}</strong>
+                    {" · "}Région: <strong style={{ color:"rgba(200,190,170,.8)" }}>{p.region}</strong>
+                    {" · "}Ordre: <strong style={{ color:"rgba(200,190,170,.8)" }}>{p.sortOrder}</strong>
+                    {p.discountType && <span style={{ color:ACCENT }}> · -{p.discountType === "percent" ? `${p.discountValue}%` : `${p.discountValue}€`}</span>}
+                  </p>
+                  {p.description && <p style={{ margin:0, fontSize:11, color:"rgba(200,190,170,.4)" }}>{p.description.slice(0,80)}</p>}
+                </div>
+                <div style={{ display:"flex", gap:8, alignItems:"center", flexShrink:0 }}>
+                  <Badge label={p.stock > 0 ? `${p.stock} en stock` : "Rupture"} color={p.stock > 0 ? "#22c55e" : "#ef4444"}/>
+                  <Btn onClick={() => { setEditingId(p.id); setCreating(false) }}>
+                    <Edit2 size={13}/> Modifier
+                  </Btn>
+                  <Btn variant="danger" onClick={async () => { if (confirm(`Supprimer "${p.title}" ?`)) { await deleteProduct(p.id); onRefresh() } }}>
+                    <Trash2 size={13}/>
+                  </Btn>
+                </div>
+              </Card>
+            )}
+          </div>
         ))}
+        {filtered.length === 0 && <EmptyState msg={search ? "Aucun produit trouvé." : "Aucun produit."}/>}
       </div>
     </div>
   )
