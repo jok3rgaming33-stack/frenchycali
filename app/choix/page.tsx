@@ -7,7 +7,7 @@ const SOCIALS = [
   { href:"http://t.me/Caliyorder", label:"Telegram", img:"https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg" },
   { href:"https://www.instagram.com/calideliveryoff?igsh=NG56Y3lneWpidzM2", label:"Instagram", img:"https://upload.wikimedia.org/wikipedia/commons/e/e7/Instagram_logo_2016.svg" },
   { href:"https://discord.gg/sRXmW8cTE4", label:"Discord", img:"https://static.vecteezy.com/system/resources/previews/023/986/880/non_2x/discord-logo-discord-logo-transparent-discord-icon-transparent-free-free-png.png" },
-  { href:"https://callup.luffa.im/c/A6DwyCuW6rp", label:"Luffa", img:"https://www.luffa.im/images/singleLogo.png" },
+  { href:"https://callup.luffa.im/c/A6DwyCuW6rp", label:"Luffa", img:"/images/luffa.png" },
 ]
 
 export default function ChoixPage() {
