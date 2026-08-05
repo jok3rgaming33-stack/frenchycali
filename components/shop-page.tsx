@@ -297,8 +297,12 @@ export function ShopPage({ shop, initialProducts }: Props) {
           .product-modal-backdrop { align-items: center !important; padding: 24px !important; }
           .product-modal-sheet {
             border-radius: 20px !important;
-            max-height: min(85vh, 720px) !important;
+            max-height: min(88vh, 780px) !important;
             width: min(100%, 520px) !important;
+          }
+          .product-grid {
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)) !important;
+            gap: 18px !important;
           }
         }
         @media (max-width: 767px) {
@@ -308,9 +312,30 @@ export function ShopPage({ shop, initialProducts }: Props) {
           .product-modal-backdrop { align-items: flex-end !important; }
           .product-modal-sheet {
             border-radius: 24px 24px 0 0 !important;
-            max-height: 85vh !important;
+            max-height: 90vh !important;
             width: 100% !important;
           }
+          /* 2 colonnes mobiles : thumbs portrait, hauteur raisonnable pour scroller */
+          .product-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+          }
+          .product-thumb {
+            aspect-ratio: 3 / 4 !important;
+          }
+        }
+        /* Images dans la thumb : cover centré (produits) */
+        .product-thumb img {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          object-position: center !important;
+        }
+        .product-detail-media img {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          object-position: center !important;
         }
         .shop-layer { position: relative; z-index: 2; }
       `}</style>
@@ -472,10 +497,10 @@ export function ShopPage({ shop, initialProducts }: Props) {
             </div>
           )}
 
-          {/* Grille produits — en haut de page, pas collée en bas */}
-          <div style={{
+          {/* Grille produits — miniatures plus hautes (moins de crop vidéo/photo), scroll fluide web + mobile */}
+          <div className="product-grid" style={{
             display:"grid",
-            gridTemplateColumns:"repeat(auto-fill, minmax(min(100%, 260px), 1fr))",
+            gridTemplateColumns:"repeat(auto-fill, minmax(min(100%, 240px), 1fr))",
             gap:16,
             alignItems:"start",
             alignContent:"start",
@@ -483,6 +508,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
             {displayed.map((product) => {
               const img = productImage(product)
               const mType = productMediaType(product)
+              const isVideoMedia = mType === "video"
               return (
               <div key={product.id} role="button" tabIndex={0}
                 onClick={() => setSelectedProduct(product)}
@@ -494,9 +520,13 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform="translateY(-3px)"; (e.currentTarget as HTMLElement).style.boxShadow=`0 0 22px ${glowColor}` }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform="translateY(0)"; (e.currentTarget as HTMLElement).style.boxShadow="0 8px 20px rgba(0,0,0,.45)" }}>
-                {/* Zone média toujours présente pour une hauteur de carte stable */}
-                <div style={{
-                  height:170, overflow:"hidden", flexShrink:0,
+                {/* Zone média portrait (~4:5) — ~2× plus haute qu’avant (170px) pour moins cropper vidéos/photos */}
+                <div className="product-thumb" style={{
+                  position:"relative",
+                  width:"100%",
+                  aspectRatio:"4 / 5",
+                  overflow:"hidden",
+                  flexShrink:0,
                   background: isDelivery
                     ? "linear-gradient(145deg, rgba(139,0,255,.25), rgba(0,255,157,.08))"
                     : "linear-gradient(145deg, rgba(255,202,40,.18), rgba(230,81,0,.08))",
@@ -507,8 +537,21 @@ export function ShopPage({ shop, initialProducts }: Props) {
                       src={img}
                       alt={product.title}
                       mediaType={mType}
-                      className="h-full w-full object-cover"
-                      videoProps={{ muted: true, playsInline: true, loop: true, autoPlay: true, style: { width:"100%", height:"100%", objectFit:"cover" } }}
+                      className="h-full w-full"
+                      videoProps={{
+                        muted: true,
+                        playsInline: true,
+                        loop: true,
+                        autoPlay: true,
+                        // contain = cadre entier visible ; cover pour photos produit
+                        style: {
+                          width:"100%",
+                          height:"100%",
+                          objectFit: isVideoMedia ? "contain" : "cover",
+                          objectPosition: "center",
+                          background: "#000",
+                        },
+                      }}
                     />
                   ) : (
                     <Package style={{ width:40, height:40, opacity:0.35, color: accentColor }} />
@@ -572,13 +615,35 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cardBorder}`, borderRadius:10, width:36, height:36, cursor:"pointer", color:"rgba(200,190,170,.9)", fontSize:18, lineHeight:1 }}>×</button>
             </div>
             {productImage(selectedProduct) ? (
-              <div style={{ width:"100%", height:200, borderRadius:16, overflow:"hidden", marginBottom:16, background:"#000" }}>
+              <div className="product-detail-media" style={{
+                width:"100%",
+                aspectRatio:"4 / 5",
+                maxHeight:"min(52vh, 420px)",
+                borderRadius:16,
+                overflow:"hidden",
+                marginBottom:16,
+                background:"#000",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"center",
+              }}>
                 <BlobMedia
                   src={productImage(selectedProduct)}
                   alt={selectedProduct.title}
                   mediaType={productMediaType(selectedProduct)}
-                  className="h-full w-full object-cover"
-                  videoProps={{ muted: true, playsInline: true, controls: true, style: { width:"100%", height:"100%", objectFit:"cover" } }}
+                  className="h-full w-full"
+                  videoProps={{
+                    muted: true,
+                    playsInline: true,
+                    controls: true,
+                    style: {
+                      width:"100%",
+                      height:"100%",
+                      objectFit: productMediaType(selectedProduct) === "video" ? "contain" : "cover",
+                      objectPosition: "center",
+                      background: "#000",
+                    },
+                  }}
                 />
               </div>
             ) : null}
