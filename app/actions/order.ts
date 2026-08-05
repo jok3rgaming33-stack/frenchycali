@@ -4,7 +4,6 @@ import { db } from "@/lib/db"
 import { orderThreads, threadMessages, users, promoCodes, loyaltyCodes, promoUsages } from "@/lib/db/schema"
 import { eq, desc, and, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { randomBytes } from "crypto"
 import { notifyVendor, notifyCustomer } from "@/lib/push"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 
@@ -21,76 +20,193 @@ export type PlaceOrderInput = {
   scheduledDate?: string
   scheduledSlot?: string
   promoCode?: string
+  /** Frais livraison société (distance) ou locker MR — 0 pour meetup */
+  deliveryFee?: number
   shop: "caliboyz31" | "caliboyz94" | "calidelivery"
 }
 
+/**
+ * Place une commande (aligné BB33) :
+ * - livraison = par la société (frais distance)
+ * - meetup = en main propre
+ * - locker = Mondial Relay + token TRK_ one-shot
+ */
 export async function placeOrder(input: PlaceOrderInput) {
-  const { customerToken, customerName, items, fulfillment, address, lat, lng, scheduledDate, scheduledSlot, promoCode, shop } = input
+  const {
+    customerToken,
+    customerName,
+    items,
+    fulfillment,
+    address,
+    lat,
+    lng,
+    scheduledDate,
+    scheduledSlot,
+    promoCode,
+    shop,
+  } = input
   if (!customerToken || !items?.length) return { ok: false as const, error: "Données invalides." }
 
-  const trackingToken = randomBytes(20).toString("hex")
   const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0)
+  const deliveryFee = Math.max(0, Math.round(Number(input.deliveryFee) || 0))
 
-  // Apply promo
   let discount = 0
   let promoCodeUsed: string | null = null
   if (promoCode) {
     const code = promoCode.trim().toUpperCase()
-    const promoRows = await db.select().from(promoCodes).where(and(eq(promoCodes.code, code), eq(promoCodes.active, true))).limit(1)
+    const promoRows = await db
+      .select()
+      .from(promoCodes)
+      .where(and(eq(promoCodes.code, code), eq(promoCodes.active, true)))
+      .limit(1)
     if (promoRows[0]) {
       const p = promoRows[0]
       if (subtotal >= p.minAmount) {
         if (p.type === "fixed") discount = p.value
-        if (p.type === "percent") discount = Math.round(subtotal * p.value / 100)
+        if (p.type === "percent") discount = Math.round((subtotal * p.value) / 100)
         promoCodeUsed = code
         await db.insert(promoUsages).values({ promoCode: code, userToken: customerToken })
       }
     } else {
-      // Check loyalty code
-      const loyaltyRows = await db.select().from(loyaltyCodes)
-        .where(and(eq(loyaltyCodes.code, code), eq(loyaltyCodes.userToken, customerToken), eq(loyaltyCodes.used, false))).limit(1)
+      const loyaltyRows = await db
+        .select()
+        .from(loyaltyCodes)
+        .where(
+          and(
+            eq(loyaltyCodes.code, code),
+            eq(loyaltyCodes.userToken, customerToken),
+            eq(loyaltyCodes.used, false),
+          ),
+        )
+        .limit(1)
       if (loyaltyRows[0]) {
         const lc = loyaltyRows[0]
         if (subtotal >= lc.minAmount) {
           discount = lc.discount
           promoCodeUsed = code
           await db.update(loyaltyCodes).set({ used: true }).where(eq(loyaltyCodes.id, lc.id))
-          // Deduct points
           const userRow = await db.select().from(users).where(eq(users.token, customerToken)).limit(1)
           if (userRow[0]) {
-            await db.update(users).set({ loyaltySpent: (userRow[0].loyaltySpent ?? 0) + lc.pointsCost }).where(eq(users.token, customerToken))
+            await db
+              .update(users)
+              .set({ loyaltySpent: (userRow[0].loyaltySpent ?? 0) + lc.pointsCost })
+              .where(eq(users.token, customerToken))
           }
         }
       }
     }
   }
 
-  const total = Math.max(0, subtotal - discount)
-  const summary = items.map((i) => `${i.title} (${i.variant}) x${i.qty}`).join(", ")
-  const productsJson = JSON.stringify(items)
+  const total = Math.max(0, subtotal - discount + deliveryFee)
+  const lines = items.map((i) => `• ${i.qty}x ${i.title} (${i.variant}) — ${i.price * i.qty}€`).join("\n")
+  const productsShort = items.map((i) => `${i.qty}x ${i.title}`).join(", ")
 
-  const [thread] = await db.insert(orderThreads).values({
-    customerName,
-    customerToken,
-    trackingToken,
-    summary: `[${shop}] ${summary}`,
-    products: productsJson,
-    total,
-    fulfillment,
-    address: address || null,
-    lat: lat ?? null,
-    lng: lng ?? null,
-    scheduledDate: scheduledDate || null,
-    scheduledSlot: scheduledSlot || null,
-    status: "en_attente",
-  }).returning()
+  const modeLabel =
+    fulfillment === "meetup"
+      ? `Meet-up / en main propre — ${scheduledSlot || "créneau à confirmer"}`
+      : fulfillment === "locker"
+        ? `Locker Mondial Relay — ${address || "point à confirmer"} (frais ${deliveryFee}€)`
+        : `Livraison par nos soins — ${address || "adresse"} — ${scheduledSlot || "créneau"} (frais ${deliveryFee}€)`
+
+  const summary = [
+    `Nouvelle commande [${shop}] — ${customerName}`,
+    ``,
+    lines,
+    ``,
+    fulfillment !== "locker" && scheduledDate ? `Date : ${scheduledDate}` : null,
+    modeLabel,
+    promoCodeUsed && discount > 0 ? `Code ${promoCodeUsed} : -${discount}€` : null,
+    ``,
+    `Sous-total : ${subtotal}€`,
+    deliveryFee > 0 ? `${fulfillment === "locker" ? "Locker MR" : "Livraison"} : ${deliveryFee}€` : null,
+    discount > 0 ? `Réduction : -${discount}€` : null,
+    `TOTAL : ${total}€`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const trackingToken =
+    fulfillment === "locker"
+      ? `TRK_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
+      : `ORD_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
+
+  const [thread] = await db
+    .insert(orderThreads)
+    .values({
+      customerName: customerName || "Client",
+      customerToken,
+      trackingToken,
+      summary: summary.slice(0, 4000),
+      products: productsShort,
+      total,
+      fulfillment,
+      address: address?.trim() || null,
+      lat: lat ?? null,
+      lng: lng ?? null,
+      scheduledDate: scheduledDate || null,
+      scheduledSlot: scheduledSlot || null,
+      status: "en_attente",
+    })
+    .returning()
 
   if (!thread) return { ok: false as const, error: "Erreur lors de la création de la commande." }
+
+  await db.insert(threadMessages).values({
+    threadId: thread.id,
+    sender: "client",
+    body: summary,
+  })
+
+  if (fulfillment === "locker") {
+    const trkBody = [
+      `⚠️ ATTENTION — LIS CE MESSAGE ATTENTIVEMENT ⚠️`,
+      ``,
+      `Ton token de suivi Locker est :`,
+      ``,
+      `${trackingToken}`,
+      ``,
+      `SAUVEGARDE CE TOKEN MAINTENANT.`,
+      `Ce message sera automatiquement supprimé une fois que tu l'auras ouvert, pour des raisons de sécurité.`,
+      `Sans ce token tu ne pourras plus accéder au suivi de ta commande.`,
+    ].join("\n")
+
+    const [trkThread] = await db
+      .insert(orderThreads)
+      .values({
+        customerName: customerName || "Client",
+        customerToken,
+        trackingToken: `TRK_MSG_${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`,
+        summary: `Token de suivi — Commande #${thread.id}`,
+        total: 0,
+        fulfillment: "locker",
+        status: "trk_token",
+      })
+      .returning()
+
+    await db.insert(threadMessages).values({
+      threadId: trkThread.id,
+      sender: "vendeur",
+      body: trkBody,
+    })
+
+    await notifyCustomer(customerToken, {
+      title: "Token de suivi Locker — A SAUVEGARDER",
+      body: "Ouvre la messagerie maintenant pour récupérer ton token de suivi. Il sera supprimé après lecture.",
+      url: "/",
+      tag: `trk-${thread.id}`,
+    })
+  } else {
+    await db.insert(threadMessages).values({
+      threadId: thread.id,
+      sender: "vendeur",
+      body: `Merci pour ta commande ! Elle a bien été prise en compte (livraison par nos soins ou meet-up selon ton choix). Tu recevras une mise à jour dès qu'elle sera traitée.`,
+    })
+  }
 
   try {
     await notifyVendor({
       title: `Nouvelle commande ${shop}`,
-      body: `${customerName} — ${total}€ — ${fulfillment}`,
+      body: `${customerName} — ${total}€ — ${fulfillment}${fulfillment === "locker" ? " LOCKER" : ""}`,
       url: `/admin`,
       tag: "new-order",
     })
@@ -99,12 +215,17 @@ export async function placeOrder(input: PlaceOrderInput) {
   }
 
   revalidatePath("/admin")
-  return { ok: true as const, trackingToken, threadId: thread.id }
+  revalidatePath("/messagerie")
+  return { ok: true as const, trackingToken, threadId: thread.id, total, deliveryFee, discount }
 }
 
 export async function getOrdersByToken(customerToken: string) {
   if (!customerToken) return []
-  return db.select().from(orderThreads).where(eq(orderThreads.customerToken, customerToken)).orderBy(desc(orderThreads.createdAt))
+  return db
+    .select()
+    .from(orderThreads)
+    .where(eq(orderThreads.customerToken, customerToken))
+    .orderBy(desc(orderThreads.createdAt))
 }
 
 export async function getOrderByTracking(trackingToken: string) {
@@ -119,11 +240,20 @@ export async function getThreadMessages(threadId: number) {
 
 export async function sendClientMessage(threadId: number, body: string, customerToken: string) {
   if (!threadId || !body?.trim() || !customerToken) return { ok: false as const }
-  const thread = await db.select().from(orderThreads).where(and(eq(orderThreads.id, threadId), eq(orderThreads.customerToken, customerToken))).limit(1)
+  const thread = await db
+    .select()
+    .from(orderThreads)
+    .where(and(eq(orderThreads.id, threadId), eq(orderThreads.customerToken, customerToken)))
+    .limit(1)
   if (!thread[0]) return { ok: false as const, error: "Accès refusé." }
   await db.insert(threadMessages).values({ threadId, sender: "client", body: body.trim() })
   await db.update(orderThreads).set({ updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
-  await notifyVendor({ title: "Nouveau message client", body: `${thread[0].customerName}: ${body.slice(0, 80)}`, url: "/admin", tag: "client-message" })
+  await notifyVendor({
+    title: "Nouveau message client",
+    body: `${thread[0].customerName}: ${body.slice(0, 80)}`,
+    url: "/admin",
+    tag: "client-message",
+  })
   return { ok: true as const }
 }
 
@@ -135,7 +265,12 @@ export async function sendAdminMessage(threadId: number, body: string) {
   await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body.trim() })
   await db.update(orderThreads).set({ updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
   if (thread[0].customerToken) {
-    await notifyCustomer(thread[0].customerToken, { title: "Nouveau message", body: body.slice(0, 80), url: `/suivi?token=${thread[0].trackingToken}`, tag: "vendor-message" })
+    await notifyCustomer(thread[0].customerToken, {
+      title: "Nouveau message",
+      body: body.slice(0, 80),
+      url: `/suivi?token=${thread[0].trackingToken}`,
+      tag: "vendor-message",
+    })
   }
   revalidatePath("/admin")
   return { ok: true as const }
@@ -148,7 +283,12 @@ export async function updateOrderStatus(threadId: number, status: string) {
   await db.update(orderThreads).set({ status, updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
   if (thread[0].customerToken) {
     const label = status.replace(/_/g, " ")
-    await notifyCustomer(thread[0].customerToken, { title: "Commande mise à jour", body: `Statut : ${label}`, url: `/suivi?token=${thread[0].trackingToken}`, tag: "order-status" })
+    await notifyCustomer(thread[0].customerToken, {
+      title: "Commande mise à jour",
+      body: `Statut : ${label}`,
+      url: `/suivi?token=${thread[0].trackingToken}`,
+      tag: "order-status",
+    })
   }
   revalidatePath("/admin")
   return { ok: true as const }
@@ -161,5 +301,8 @@ export async function listAllOrders() {
 
 export async function updateClientLastSeen(trackingToken: string) {
   if (!trackingToken) return
-  await db.update(orderThreads).set({ clientLastSeen: sql`now()` }).where(eq(orderThreads.trackingToken, trackingToken))
+  await db
+    .update(orderThreads)
+    .set({ clientLastSeen: sql`now()` })
+    .where(eq(orderThreads.trackingToken, trackingToken))
 }

@@ -52,11 +52,11 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Choisis ton mode de récupération",
-        desc: "Livraison à domicile (dès 50€) ou Meet-up à un point convenu — tu sélectionnes la date et le créneau horaire.",
+        desc: "Livraison par nos soins (dès le minimum d'achat, frais selon distance), Meet-up en main propre, ou Locker Mondial Relay (paiement XMR).",
       },
       {
         label: "Valide ta commande",
-        desc: "Un récapitulatif complet s'affiche avant confirmation. Aucun paiement en ligne : le règlement se fait lors de la réception.",
+        desc: "Récap complet avant confirmation. Livraison / meet-up : règlement à la remise. Locker : paiement Monero (XMR) avant expédition.",
       },
     ],
   },

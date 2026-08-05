@@ -320,7 +320,7 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
               <div>
                 <h3 className="text-sm font-bold">Commande #{detailThread.id} — {detailThread.customerName}</h3>
                 <p className="text-xs text-muted-foreground">
-                  {detailThread.fulfillment === "locker" ? "Locker MR — 3 a 5j" : detailThread.fulfillment === "meetup" ? "Retrait meet-up" : "Livraison"}
+                  {detailThread.fulfillment === "locker" ? "Locker MR — 3 a 5j" : detailThread.fulfillment === "meetup" ? "Retrait meet-up" : "Livraison (société)"}
                   {detailThread.scheduledDate ? ` · ${detailThread.scheduledDate}` : ""}
                   {detailThread.scheduledSlot ? ` · ${detailThread.scheduledSlot}` : ""}
                 </p>

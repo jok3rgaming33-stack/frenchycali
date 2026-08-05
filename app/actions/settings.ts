@@ -34,13 +34,13 @@ export type CartConfig = {
 const DEFAULT_ORIGIN: MapOrigin = { lat: 44.8378, lng: -0.5792, label: "Bordeaux centre" }
 
 const DEFAULT_LOGISTICS: LogisticsContent = {
-  deliveryTitle: "Livraison à domicile",
+  deliveryTitle: "Livraison par nos soins",
   deliveryBody:
-    "Livraison discrète à l'adresse de ton choix. Le livreur te contacte à l'approche. Reste joignable pour faciliter la remise.",
-  meetupTitle: "Meet-up (point de retrait)",
+    "Livraison discrète effectuée par notre équipe à l'adresse de ton choix. Frais selon la distance (10€ jusqu'à 10 km, 20€ jusqu'à 20 km, puis +1€/km). Le livreur te contacte à l'approche. Reste joignable pour faciliter la remise. Disponible dès le montant minimum d'achat configuré.",
+  meetupTitle: "Meet-up (en main propre)",
   meetupBody:
-    "Retrouve-nous à un point de rendez-vous convenu. Choisis une date et un créneau horaire lors de la commande.",
-  note: "Les frais et délais peuvent varier selon ta zone et la distance depuis notre point de départ.",
+    "Retrouve-nous à un point de rendez-vous convenu. Choisis une date et une heure lors de la commande. Gratuit, sans frais de déplacement.",
+  note: "Locker Mondial Relay disponible au panier (frais fixes + paiement XMR). Les frais et délais de livraison à domicile varient selon ta zone.",
 }
 
 const DEFAULT_CART_CONFIG: CartConfig = {

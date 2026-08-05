@@ -295,7 +295,7 @@ export function AdminCreateOrderModal({ customerName, customerToken, onClose, on
             <div className="grid grid-cols-3 gap-2">
               {(["meetup", "livraison", "locker"] as const).map((m) => {
                 const Icon = m === "meetup" ? Store : m === "locker" ? Package : Truck
-                const label = m === "meetup" ? "Meet-up" : m === "locker" ? "Locker" : "Livraison"
+                const label = m === "meetup" ? "Meet-up" : m === "locker" ? "Locker MR" : "Livraison (société)"
                 const fee = m === "meetup" ? "Gratuit" : m === "locker" ? "10€" : "10–20€+"
                 return (
                   <button
