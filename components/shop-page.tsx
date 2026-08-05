@@ -338,6 +338,10 @@ export function ShopPage({ shop, initialProducts }: Props) {
           object-position: center !important;
         }
         .shop-layer { position: relative; z-index: 2; }
+        .category-filter-bar { -ms-overflow-style: none; }
+        .category-filter-bar > div::-webkit-scrollbar { display: none; height: 0; }
+        .category-chip:active { transform: scale(0.97) !important; }
+        .category-chip.is-active { cursor: default; }
       `}</style>
       <ParticlesCanvas theme={theme} />
 
@@ -477,23 +481,94 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
       {view === "shop" && (
         <main className="shop-layer" style={{ position:"relative", zIndex:2, maxWidth:1200, margin:"0 auto", padding:"20px 16px 48px", width:"100%", boxSizing:"border-box" }}>
-          {/* Filtres catégories */}
+          {/* Filtres catégories — chips glass + gradient thème gold / delivery */}
           {sections.length > 0 && (
-            <div style={{
-              position:"sticky", top:0, zIndex:15, margin:"0 0 20px", padding:"10px 0",
-              background: isDelivery?"rgba(10,0,18,.92)":"rgba(15,13,7,.92)", backdropFilter:"blur(10px)",
-              display:"flex", gap:8, overflowX:"auto", scrollbarWidth:"none", WebkitOverflowScrolling:"touch" as unknown as undefined,
-            }}>
-              <button type="button" onClick={() => setActiveSection("all")}
-                style={{ flexShrink:0, padding:"8px 18px", borderRadius:999, border:`1px solid ${activeSection==="all"?accentColor:cardBorder}`, background:activeSection==="all"?accentColor:"transparent", color:activeSection==="all"?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" }}>
-                Tout
-              </button>
-              {sections.map((s) => (
-                <button type="button" key={s} onClick={() => setActiveSection(s)}
-                  style={{ flexShrink:0, padding:"8px 18px", borderRadius:999, border:`1px solid ${activeSection===s?accentColor:cardBorder}`, background:activeSection===s?accentColor:"transparent", color:activeSection===s?"#000":isDelivery?"#f0f8ff":"#f5e8c7", fontSize:13, cursor:"pointer", fontWeight:activeSection===s?700:400, whiteSpace:"nowrap" }}>
-                  {s}
-                </button>
-              ))}
+            <div
+              className="category-filter-bar"
+              style={{
+                position:"sticky", top:0, zIndex:15, margin:"0 0 22px",
+                padding:"12px 4px 14px",
+                background: isDelivery
+                  ? "linear-gradient(180deg, rgba(10,0,18,.97) 60%, rgba(10,0,18,.55))"
+                  : "linear-gradient(180deg, rgba(15,13,7,.97) 60%, rgba(15,13,7,.55))",
+                backdropFilter:"blur(14px)",
+                WebkitBackdropFilter:"blur(14px)",
+              }}
+            >
+              <div style={{
+                display:"flex", gap:10, overflowX:"auto", scrollbarWidth:"none",
+                WebkitOverflowScrolling:"touch" as unknown as undefined,
+                paddingBottom:2,
+              }}>
+                {(["all", ...sections] as string[]).map((s) => {
+                  const active = activeSection === s
+                  const label = s === "all" ? "Tout" : s.charAt(0).toUpperCase() + s.slice(1)
+                  const activeBg = isDelivery
+                    ? "linear-gradient(135deg, #8b00ff 0%, #00ff9d 100%)"
+                    : "linear-gradient(135deg, #ffca28 0%, #e65100 100%)"
+                  const idleBg = isDelivery
+                    ? "rgba(139,0,255,.08)"
+                    : "rgba(255,202,40,.06)"
+                  const idleBorder = isDelivery
+                    ? "1px solid rgba(0,255,157,.22)"
+                    : "1px solid rgba(255,202,40,.22)"
+                  const activeBorder = isDelivery
+                    ? "1px solid rgba(0,255,157,.55)"
+                    : "1px solid rgba(255,202,40,.55)"
+                  const activeShadow = isDelivery
+                    ? "0 0 18px rgba(139,0,255,.45), 0 0 28px rgba(0,255,157,.18), inset 0 1px 0 rgba(255,255,255,.25)"
+                    : "0 0 18px rgba(255,202,40,.4), 0 4px 14px rgba(230,81,0,.25), inset 0 1px 0 rgba(255,255,255,.35)"
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`category-chip${active ? " is-active" : ""}`}
+                      onClick={() => setActiveSection(s)}
+                      style={{
+                        flexShrink:0,
+                        position:"relative",
+                        padding:"10px 20px",
+                        borderRadius:14,
+                        border: active ? activeBorder : idleBorder,
+                        background: active ? activeBg : idleBg,
+                        color: active
+                          ? (isDelivery ? "#05010a" : "#0f0d07")
+                          : (isDelivery ? "rgba(240,248,255,.88)" : "rgba(245,232,199,.88)"),
+                        fontSize:12,
+                        fontWeight: active ? 800 : 600,
+                        letterSpacing:"0.08em",
+                        textTransform:"uppercase" as const,
+                        fontFamily:"Orbitron, Inter, system-ui, sans-serif",
+                        cursor:"pointer",
+                        whiteSpace:"nowrap",
+                        boxShadow: active ? activeShadow : "inset 0 1px 0 rgba(255,255,255,.04)",
+                        transition:"transform .2s ease, box-shadow .25s ease, border-color .2s ease, background .2s ease, color .2s ease",
+                        backdropFilter: active ? "none" : "blur(8px)",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          const el = e.currentTarget as HTMLElement
+                          el.style.transform = "translateY(-1px)"
+                          el.style.borderColor = isDelivery ? "rgba(0,255,157,.4)" : "rgba(255,202,40,.4)"
+                          el.style.boxShadow = isDelivery
+                            ? "0 0 12px rgba(139,0,255,.2)"
+                            : "0 0 12px rgba(255,202,40,.18)"
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          const el = e.currentTarget as HTMLElement
+                          el.style.transform = "translateY(0)"
+                          el.style.borderColor = isDelivery ? "rgba(0,255,157,.22)" : "rgba(255,202,40,.22)"
+                          el.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.04)"
+                        }
+                      }}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
 
