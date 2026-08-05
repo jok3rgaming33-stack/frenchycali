@@ -230,7 +230,7 @@ export function CheckoutCart({
     setGeoStatus("loading")
     setResolvedLabel(null)
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`)
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}&shop=${encodeURIComponent(shop)}`)
       const data = await res.json()
       if (res.ok && data.found) {
         setDistanceKm(Number(data.distanceKm))

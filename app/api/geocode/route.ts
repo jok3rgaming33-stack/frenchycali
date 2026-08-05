@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-
-// Coordonnées GPS de référence (point de départ des livraisons)
-const ORIGIN = { lat: 44.841575, lng: -0.581069 }
+import { MAP_REGION_DEFAULTS, type MapRegion } from "@/app/actions/settings"
 
 // Distance Haversine en km
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -14,8 +12,17 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+function originForShop(shop: string | null): { lat: number; lng: number } {
+  if (shop === "caliboyz94") return MAP_REGION_DEFAULTS.caliboyz94
+  if (shop === "calidelivery") return MAP_REGION_DEFAULTS.calidelivery
+  if (shop === "caliboyz31") return MAP_REGION_DEFAULTS.caliboyz31
+  // Défaut Toulouse (31)
+  return MAP_REGION_DEFAULTS.caliboyz31
+}
+
 export async function GET(req: NextRequest) {
   const query = req.nextUrl.searchParams.get("q")?.trim()
+  const shop = req.nextUrl.searchParams.get("shop")?.trim() || null
 
   if (!query) {
     return NextResponse.json({ error: "Adresse manquante" }, { status: 400 })
@@ -38,7 +45,8 @@ export async function GET(req: NextRequest) {
     }
 
     const [lng, lat] = feature.geometry.coordinates as [number, number]
-    const distanceKm = haversineKm(ORIGIN.lat, ORIGIN.lng, lat, lng)
+    const origin = originForShop(shop as MapRegion | null)
+    const distanceKm = haversineKm(origin.lat, origin.lng, lat, lng)
 
     return NextResponse.json({
       found: true,
@@ -47,6 +55,7 @@ export async function GET(req: NextRequest) {
       lng,
       distanceKm,
       score: feature.properties?.score ?? null,
+      originShop: shop || "caliboyz31",
     })
   } catch {
     return NextResponse.json({ error: "Erreur lors du géocodage" }, { status: 500 })

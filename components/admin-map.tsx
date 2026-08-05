@@ -5,11 +5,28 @@ import type { OrderThread } from "@/lib/db/schema"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { isClosedStatus } from "@/lib/order-status"
 import { Map as MapIcon, MapPinOff, Route, RotateCcw, Truck, Store, Loader2, Clock, Save, Check } from "lucide-react"
-import { getMapOrigin, setMapOrigin } from "@/app/actions/settings"
+import {
+  getMapOrigins,
+  setMapOrigin,
+  MAP_REGION_DEFAULTS,
+  type MapRegion,
+} from "@/app/actions/settings"
 import "leaflet/dist/leaflet.css"
 
-// Point de départ par défaut (modifiable en cliquant sur la carte)
-const DEFAULT_ORIGIN = { lat: 44.841575, lng: -0.581069 }
+const REGION_TABS: { id: MapRegion; label: string; hint: string }[] = [
+  { id: "caliboyz31", label: "Cali Boyz 31", hint: "Focus Toulouse" },
+  { id: "caliboyz94", label: "Cali Boyz 94", hint: "Focus Créteil" },
+  { id: "calidelivery", label: "CaliDelivery", hint: "Vue France" },
+]
+
+/** Détecte la boutique d'une commande via le tag [shop] dans le résumé. */
+function orderShop(t: OrderThread): MapRegion | null {
+  const s = `${t.summary ?? ""} ${t.products ?? ""}`
+  if (/\[caliboyz31\]/i.test(s)) return "caliboyz31"
+  if (/\[caliboyz94\]/i.test(s)) return "caliboyz94"
+  if (/\[calidelivery\]/i.test(s)) return "calidelivery"
+  return null
+}
 
 // Serveur de routage routier public (OSRM). Le service "trip" optimise l'ordre
 // des arrêts (problème du voyageur de commerce) ET renvoie un tracé qui suit
@@ -166,18 +183,24 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
   const overlayRef = useRef<import("leaflet").LayerGroup | null>(null)
   const [ready, setReady] = useState(false)
 
-  const [departure, setDeparture] = useState(DEFAULT_ORIGIN)
+  const [region, setRegion] = useState<MapRegion>("caliboyz31")
+  const [origins, setOrigins] = useState(MAP_REGION_DEFAULTS)
+  const [departure, setDeparture] = useState<LatLng>({
+    lat: MAP_REGION_DEFAULTS.caliboyz31.lat,
+    lng: MAP_REGION_DEFAULTS.caliboyz31.lng,
+  })
   const [savingOrigin, setSavingOrigin] = useState(false)
   const [savedOrigin, setSavedOrigin] = useState(false)
 
-  // Charge le point de départ enregistré (persisté en base par l'admin).
+  // Charge les 3 origines (31 Toulouse · 94 Créteil · delivery France).
   useEffect(() => {
     let cancelled = false
-    getMapOrigin()
+    getMapOrigins()
       .then((o) => {
-        if (!cancelled && Number.isFinite(o.lat) && Number.isFinite(o.lng)) {
-          setDeparture({ lat: o.lat, lng: o.lng })
-        }
+        if (cancelled) return
+        setOrigins(o)
+        const cur = o.caliboyz31
+        setDeparture({ lat: cur.lat, lng: cur.lng })
       })
       .catch(() => {})
     return () => {
@@ -185,26 +208,58 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
     }
   }, [])
 
-  // Enregistre le point de départ courant comme valeur par défaut persistée.
+  // Changement de zone : focus carte + point de départ de la région
+  useEffect(() => {
+    const o = origins[region] ?? MAP_REGION_DEFAULTS[region]
+    setDeparture({ lat: o.lat, lng: o.lng })
+    const map = mapRef.current
+    if (map && ready) {
+      const zoom = o.zoom ?? MAP_REGION_DEFAULTS[region].zoom ?? 12
+      map.setView([o.lat, o.lng], zoom, { animate: true })
+    }
+    // reset sélection tournée au switch région
+    initRef.current = false
+  }, [region, origins, ready])
+
+  // Enregistre le point de départ pour la région active.
   const saveOrigin = async () => {
     setSavingOrigin(true)
     setSavedOrigin(false)
-    const res = await setMapOrigin({ lat: departure.lat, lng: departure.lng })
+    const def = MAP_REGION_DEFAULTS[region]
+    const res = await setMapOrigin(
+      { lat: departure.lat, lng: departure.lng, label: def.label, zoom: def.zoom },
+      region,
+    )
     setSavingOrigin(false)
     if (res.ok) {
+      setOrigins((prev) => ({
+        ...prev,
+        [region]: { ...prev[region], lat: departure.lat, lng: departure.lng },
+      }))
       setSavedOrigin(true)
       setTimeout(() => setSavedOrigin(false), 2000)
     }
   }
 
-  // Commandes géolocalisées NON livrées/annulées (les livrées sont retirées de la carte)
+  const resetOrigin = () => {
+    const def = MAP_REGION_DEFAULTS[region]
+    setDeparture({ lat: def.lat, lng: def.lng })
+    const map = mapRef.current
+    if (map) map.setView([def.lat, def.lng], def.zoom ?? 12, { animate: true })
+  }
+
+  // Commandes de la région active, géolocalisées, non clôturées
   const located = useMemo<Located[]>(
     () =>
-      threads.filter(
-        (t): t is Located =>
-          typeof t.lat === "number" && typeof t.lng === "number" && !isClosedStatus(t.status),
-      ),
-    [threads],
+      threads.filter((t): t is Located => {
+        if (typeof t.lat !== "number" || typeof t.lng !== "number") return false
+        if (isClosedStatus(t.status)) return false
+        const shop = orderShop(t)
+        // Sans tag shop : visible uniquement sur la vue nationale delivery
+        if (!shop) return region === "calidelivery"
+        return shop === region
+      }),
+    [threads, region],
   )
 
   // Sélection des commandes à inclure dans la tournée (toutes par défaut)
@@ -301,7 +356,7 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
     })
   }
 
-  // Création de la carte (une seule fois)
+  // Création de la carte (une seule fois) — focus initial Toulouse (31)
   useEffect(() => {
     let cancelled = false
     let onResize: (() => void) | null = null
@@ -309,9 +364,10 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
       const L = (await import("leaflet")).default
       if (cancelled || !containerRef.current || mapRef.current) return
       LRef.current = L
-      const map = L.map(containerRef.current, { scrollWheelZoom: false }).setView(
-        [DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lng],
-        12,
+      const init = MAP_REGION_DEFAULTS.caliboyz31
+      const map = L.map(containerRef.current, { scrollWheelZoom: true }).setView(
+        [init.lat, init.lng],
+        init.zoom ?? 12,
       )
       mapRef.current = map
 
@@ -322,7 +378,7 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
 
       overlayRef.current = L.layerGroup().addTo(map)
 
-      // Clic sur la carte => définit le point de départ
+      // Clic sur la carte => définit le point de départ (sauf vue nationale pure : toujours possible pour tournée)
       map.on("click", (e: import("leaflet").LeafletMouseEvent) => {
         setDeparture({ lat: e.latlng.lat, lng: e.latlng.lng })
       })
@@ -426,13 +482,18 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
       marker.on("click", () => toggleSelected(t.id))
     }
 
-    // Cadre la vue sur le départ + commandes
-    const pts: [number, number][] = [[departure.lat, departure.lng], ...located.map((t) => [t.lat, t.lng] as [number, number])]
-    if (pts.length > 1) {
-      map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 })
+    // 31/94 : cadre sur départs + commandes · delivery : garde la vue France (pas de zoom auto agressif)
+    if (region !== "calidelivery") {
+      const pts: [number, number][] = [
+        [departure.lat, departure.lng],
+        ...located.map((t) => [t.lat, t.lng] as [number, number]),
+      ]
+      if (pts.length > 1) {
+        map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 })
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, located, selectedIds, departure, routing, orderIndex, orderCountByClient])
+  }, [ready, located, selectedIds, departure, routing, orderIndex, orderCountByClient, region])
 
   const unlocatedCount = threads.filter((t) => !isClosedStatus(t.status)).length - located.length
   const deliveredCount = threads.filter((t) => isClosedStatus(t.status)).length
@@ -457,6 +518,8 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
   const mapActionBtn =
     "inline-flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-center text-[11px] font-medium leading-tight transition-colors sm:text-xs"
 
+  const regionMeta = REGION_TABS.find((t) => t.id === region)!
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-wrap items-start gap-3">
@@ -466,11 +529,40 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold">Tournée de livraison</h2>
           <p className="text-xs text-muted-foreground">
-            Clique sur la carte (ou glisse le point rouge) pour définir ton point de départ, puis choisis les
-            commandes à assurer. L&apos;itinéraire est calculé par la route.
+            3 cartes : <strong>31 → Toulouse</strong>, <strong>94 → Créteil</strong>,{" "}
+            <strong>Delivery → France</strong>. Clique / glisse le point rouge pour le départ de la zone active.
           </p>
         </div>
       </div>
+
+      {/* Sélecteur de zone (3 versions) */}
+      <div className="flex flex-wrap gap-2">
+        {REGION_TABS.map((tab) => {
+          const active = region === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setRegion(tab.id)}
+              className={`rounded-xl border px-3 py-2 text-left transition-colors sm:px-4 ${
+                active
+                  ? "border-accent bg-accent/15 text-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-secondary"
+              }`}
+            >
+              <span className="block text-xs font-bold sm:text-sm">{tab.label}</span>
+              <span className="block text-[10px] opacity-80 sm:text-[11px]">{tab.hint}</span>
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Zone active : <span className="font-semibold text-foreground">{regionMeta.label}</span>
+        {" · "}
+        {region === "calidelivery"
+          ? "Vue nationale — commandes CaliDelivery (+ non taguées)"
+          : `Commandes ${regionMeta.label} uniquement · focus ${regionMeta.hint.replace("Focus ", "")}`}
+      </p>
 
       {/* Légende des échéances */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[11px] sm:gap-x-4 sm:px-4 sm:text-xs">
@@ -552,12 +644,12 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
               </button>
               <button
                 type="button"
-                onClick={() => setDeparture(DEFAULT_ORIGIN)}
+                onClick={resetOrigin}
                 className={`${mapActionBtn} border-border bg-background hover:bg-secondary`}
-                title="Réinitialiser le point de départ"
+                title="Réinitialiser le focus de la zone (Toulouse / Créteil / France)"
               >
                 <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate">Réinit. départ</span>
+                <span className="truncate">Réinit. zone</span>
               </button>
             </div>
           </div>

@@ -7,7 +7,19 @@ import { revalidatePath } from "next/cache"
 import { eq } from "drizzle-orm"
 
 // Point de départ servant au calcul des distances de livraison.
-export type MapOrigin = { lat: number; lng: number; label?: string }
+export type MapOrigin = { lat: number; lng: number; label?: string; zoom?: number }
+
+/** Zones carte multi-boutiques FrenchyCali */
+export type MapRegion = "caliboyz31" | "caliboyz94" | "calidelivery"
+
+export type MapOriginsByRegion = Record<MapRegion, MapOrigin>
+
+/** Défauts : 31 → Toulouse · 94 → Créteil · delivery → vue France */
+export const MAP_REGION_DEFAULTS: MapOriginsByRegion = {
+  caliboyz31: { lat: 43.6045, lng: 1.4442, label: "Toulouse (Cali Boyz 31)", zoom: 12 },
+  caliboyz94: { lat: 48.7904, lng: 2.4556, label: "Créteil (Cali Boyz 94)", zoom: 12 },
+  calidelivery: { lat: 46.603354, lng: 1.888334, label: "France — CaliDelivery", zoom: 6 },
+}
 
 // Contenu éditable de la modale "Livraison & Meet-up".
 export type LogisticsContent = {
@@ -31,7 +43,7 @@ export type CartConfig = {
   meetupSlots: MeetupSlot[]
 }
 
-const DEFAULT_ORIGIN: MapOrigin = { lat: 44.8378, lng: -0.5792, label: "Bordeaux centre" }
+const DEFAULT_ORIGIN: MapOrigin = MAP_REGION_DEFAULTS.caliboyz31
 
 const DEFAULT_LOGISTICS: LogisticsContent = {
   deliveryTitle: "Livraison par nos soins",
@@ -79,19 +91,82 @@ async function writeSetting(key: string, value: Record<string, unknown>) {
     .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } })
 }
 
+/** @deprecated Préférer getMapOrigins() — renvoie l'origine 31 (compat). */
 export async function getMapOrigin(): Promise<MapOrigin> {
-  return readSetting<MapOrigin>("map_origin", DEFAULT_ORIGIN)
+  const all = await getMapOrigins()
+  return all.caliboyz31
 }
 
-export async function setMapOrigin(origin: MapOrigin) {
+/** Origines + zoom par boutique (31 Toulouse · 94 Créteil · delivery France). */
+export async function getMapOrigins(): Promise<MapOriginsByRegion> {
+  const stored = await readSetting<Partial<MapOriginsByRegion> & MapOrigin>("map_origins", {})
+  // Migration : ancien map_origin unique → appliqué à 31 si pas encore de map_origins
+  const legacy = await readSetting<MapOrigin | null>("map_origin", null as unknown as MapOrigin)
+
+  const merge = (region: MapRegion): MapOrigin => {
+    const def = MAP_REGION_DEFAULTS[region]
+    const fromMulti = stored && typeof stored === "object" && region in stored
+      ? (stored as Partial<MapOriginsByRegion>)[region]
+      : undefined
+    if (fromMulti && Number.isFinite(fromMulti.lat) && Number.isFinite(fromMulti.lng)) {
+      return {
+        lat: Number(fromMulti.lat),
+        lng: Number(fromMulti.lng),
+        label: fromMulti.label?.trim() || def.label,
+        zoom: typeof fromMulti.zoom === "number" ? fromMulti.zoom : def.zoom,
+      }
+    }
+    // Ancien point unique (souvent Bordeaux) → ne l'utiliser que si proche d'une région connue, sinon défaut
+    if (legacy && Number.isFinite(legacy.lat) && Number.isFinite(legacy.lng) && region === "caliboyz31") {
+      // Si l'admin avait déjà personnalisé, on le garde pour 31 uniquement s'il n'est pas le vieux Bordeaux
+      const isOldBordeaux = Math.abs(legacy.lat - 44.84) < 0.1 && Math.abs(legacy.lng + 0.58) < 0.1
+      if (!isOldBordeaux) {
+        return {
+          lat: Number(legacy.lat),
+          lng: Number(legacy.lng),
+          label: legacy.label?.trim() || def.label,
+          zoom: def.zoom,
+        }
+      }
+    }
+    return { ...def }
+  }
+
+  return {
+    caliboyz31: merge("caliboyz31"),
+    caliboyz94: merge("caliboyz94"),
+    calidelivery: merge("calidelivery"),
+  }
+}
+
+export async function setMapOrigin(origin: MapOrigin, region: MapRegion = "caliboyz31") {
   if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
   const lat = Number(origin.lat)
   const lng = Number(origin.lng)
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { ok: false as const, error: "Coordonnées invalides." }
-  await writeSetting("map_origin", { lat, lng, label: origin.label?.trim() || "" })
+  if (!MAP_REGION_DEFAULTS[region]) return { ok: false as const, error: "Région invalide." }
+
+  const current = await getMapOrigins()
+  const def = MAP_REGION_DEFAULTS[region]
+  current[region] = {
+    lat,
+    lng,
+    label: origin.label?.trim() || def.label,
+    zoom: typeof origin.zoom === "number" ? origin.zoom : current[region].zoom ?? def.zoom,
+  }
+  await writeSetting("map_origins", current as unknown as Record<string, unknown>)
+  // Compat lecture ancienne clé
+  if (region === "caliboyz31") {
+    await writeSetting("map_origin", { lat, lng, label: current[region].label || "" })
+  }
   revalidatePath("/")
   revalidatePath("/admin")
   return { ok: true as const }
+}
+
+export async function getMapOriginForRegion(region: MapRegion): Promise<MapOrigin> {
+  const all = await getMapOrigins()
+  return all[region] ?? MAP_REGION_DEFAULTS[region]
 }
 
 export async function getCartConfig(): Promise<CartConfig> {
