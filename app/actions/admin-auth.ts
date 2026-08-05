@@ -11,10 +11,7 @@ import {
   finishWebAuthnRegistration,
 } from "@/app/actions/webauthn"
 
-// ─── Clés localStorage pour le token admin biométrique ───────────────────────
-// Les credentials admins sont stockés sous une clé séparée côté client
-export const ADMIN_BIO_FLAG_KEY = "cali_admin_webauthn"
-export const ADMIN_BIO_IDS_KEY  = "cali_admin_webauthn_ids"
+
 
 export async function isAdminAuthenticated(): Promise<boolean> {
   const cookieStore = await cookies()
