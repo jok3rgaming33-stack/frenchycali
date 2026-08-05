@@ -84,7 +84,7 @@ export function RecoveryBanner({ token, onOpenMessaging }: Props) {
           )}
           {status.needsKyc && (
             <Link
-              href="/verification"
+              href="/verification?from=recovery"
               className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-3 py-2 text-xs font-semibold text-black hover:brightness-110"
             >
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />

@@ -89,6 +89,7 @@ export function AdminPanel({
   initialStaff: StaffRow[]
 }) {
   const [tab, setTab] = useState<TabId>("commandes-en-cours")
+  const [focusThreadId, setFocusThreadId] = useState<number | null>(null)
   const [vueClientOpen, setVueClientOpen] = useState(false)
   const [vueClientBusy, setVueClientBusy] = useState(false)
   const [vueClientError, setVueClientError] = useState<string | null>(null)
@@ -100,6 +101,25 @@ export function AdminPanel({
     recovery: 0,
     total: 0,
   })
+
+  // Deep-link : /admin?tab=messagerie&thread=123 (depuis Récupérations)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get("tab") as TabId | null
+    if (t && TABS.some((x) => x.id === t)) setTab(t)
+    const thread = params.get("thread")
+    if (thread && /^\d+$/.test(thread)) {
+      setFocusThreadId(Number(thread))
+      if (!t) setTab("messagerie")
+    }
+    if (t || thread) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete("tab")
+      url.searchParams.delete("thread")
+      window.history.replaceState({}, "", url.pathname)
+    }
+  }, [])
 
   const openClientPreview = async (href: string) => {
     setVueClientBusy(true)
@@ -287,7 +307,7 @@ export function AdminPanel({
         ) : tab === "cloturees" ? (
           <VendorInbox initialThreads={initialPastOrders} mode="past" />
         ) : tab === "messagerie" ? (
-          <VendorInbox initialThreads={initialDiscussions} mode="messages" />
+          <VendorInbox initialThreads={initialDiscussions} mode="messages" initialThreadId={focusThreadId} />
         ) : tab === "commandes" ? (
           <AdminOrdersRecap threads={initialThreads} />
         ) : tab === "utilisateurs" ? (

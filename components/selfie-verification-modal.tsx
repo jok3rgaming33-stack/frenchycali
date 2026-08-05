@@ -23,7 +23,7 @@ type Props = {
   submitError?: string | null
 }
 
-const SITE_NAME = "BreakingBad33"
+const SITE_NAME = "FrenchyCali"
 const MIN_SECONDS = 5
 const MAX_SECONDS = 10
 

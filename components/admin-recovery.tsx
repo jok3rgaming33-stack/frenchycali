@@ -14,9 +14,9 @@ import {
   Loader2,
   Check,
   XCircle,
-  ShieldAlert,
   Link2,
   Search,
+  MessageSquare,
 } from "lucide-react"
 
 function statusLabel(s: string) {
@@ -234,7 +234,22 @@ export function AdminRecovery() {
                 </div>
               )}
 
+              <p className="mb-3 text-xs text-muted-foreground">
+                Échange client ↔ vendeur dans l&apos;onglet Messagerie
+                {claim.threadId ? ` (fil #${claim.threadId}, résumé « Clé perdue — ${claim.claimedPseudo} »)` : ""}.
+                Valide le KYC dans Vérifications si besoin, puis fusionne ici.
+              </p>
+
               <div className="flex flex-wrap gap-2">
+                {claim.threadId != null && (
+                  <a
+                    href={`/admin?tab=messagerie&thread=${claim.threadId}`}
+                    className="flex items-center gap-2 rounded-xl border border-border bg-background/50 px-4 py-2.5 text-sm font-semibold hover:bg-secondary"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Ouvrir la messagerie
+                  </a>
+                )}
                 <button
                   type="button"
                   disabled={busyId === claim.id}

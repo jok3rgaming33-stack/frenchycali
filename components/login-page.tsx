@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Copy, CheckCircle2, Loader2, KeyRound, Fingerprint, ScanFace, Eye, EyeOff, AlertTriangle, X } from "lucide-react"
+import { Copy, CheckCircle2, Loader2, KeyRound, Fingerprint, ScanFace, Eye, EyeOff, AlertTriangle, X, ShieldCheck, MessageCircle } from "lucide-react"
 import { createAccount, getCustomerStats } from "@/app/actions/account"
 import { resolveClientLogin } from "@/app/actions/staff"
 import { adminLogin } from "@/app/actions/admin-auth"
 import { verifyHuman } from "@/app/actions/security"
 import { submitLostKeyClaim } from "@/app/actions/lost-key"
+import { submitVerification } from "@/app/actions/verification"
+import { SelfieVerificationModal, type VerificationMetadata } from "@/components/selfie-verification-modal"
 import {
   startWebAuthnRegistration, finishWebAuthnRegistration,
   startWebAuthnAuthentication, finishWebAuthnAuthentication,
@@ -18,9 +20,11 @@ import {
 } from "@/lib/webauthn-client"
 
 interface Props {
-  onSuccess: (opts?: { openOrders?: boolean }) => void
+  onSuccess: (opts?: { openOrders?: boolean; openMessaging?: boolean }) => void
   shop: "caliboyz31" | "caliboyz94" | "calidelivery"
 }
+
+type LostKeyStep = "form" | "key" | "kyc" | "done"
 
 export function LoginPage({ onSuccess, shop }: Props) {
   const isDelivery = shop === "calidelivery"
@@ -63,12 +67,18 @@ export function LoginPage({ onSuccess, shop }: Props) {
   const [bioError, setBioError] = useState("")
   const [bioEnrolling, setBioEnrolling] = useState(false)
   const [bioEnrollMsg, setBioEnrollMsg] = useState<string | null>(null)
-  // Lost key
+  // Lost key recovery (clé perdue → compte provisoire → KYC → validation admin)
   const [showLostKey, setShowLostKey] = useState(false)
+  const [lostKeyStep, setLostKeyStep] = useState<LostKeyStep>("form")
   const [lostKeyPseudo, setLostKeyPseudo] = useState("")
   const [lostKeyMsg, setLostKeyMsg] = useState("")
   const [lostKeySubmitting, setLostKeySubmitting] = useState(false)
-  const [lostKeyDone, setLostKeyDone] = useState(false)
+  const [lostKeyError, setLostKeyError] = useState("")
+  const [lostKeyToken, setLostKeyToken] = useState("")
+  const [lostKeyProvPseudo, setLostKeyProvPseudo] = useState("")
+  const [lostKeyCopied, setLostKeyCopied] = useState(false)
+  const [kycSubmitting, setKycSubmitting] = useState(false)
+  const [kycError, setKycError] = useState<string | null>(null)
 
   useEffect(() => {
     setBioReady(hasLocalWebAuthn())
@@ -95,12 +105,20 @@ export function LoginPage({ onSuccess, shop }: Props) {
   const createAnonymousAccess = async () => {
     if (creating) return
     setCreating(true); setErrorCreate("")
-    const pseudo = generatePseudo(); const key = generateKey()
+    const key = generateKey()
     try {
       const human = await verifyHuman("unavailable")
       if (!human.ok) { setErrorCreate(human.error ?? "Vérification échouée."); return }
-      const res = await createAccount(key, pseudo)
-      if (!res.ok) { setErrorCreate(res.error ?? "Impossible de créer le compte."); return }
+      // Retry si collision de pseudo (rare)
+      let res: Awaited<ReturnType<typeof createAccount>> | null = null
+      let pseudo = generatePseudo()
+      for (let attempt = 0; attempt < 5; attempt++) {
+        pseudo = attempt === 0 ? pseudo : generatePseudo() + String(Math.floor(Math.random() * 90 + 10))
+        res = await createAccount(key, pseudo)
+        if (res.ok) break
+        if (!res.error?.includes("déjà pris")) break
+      }
+      if (!res?.ok) { setErrorCreate(res?.error ?? "Impossible de créer le compte."); return }
       const finalPseudo = res.pseudo ?? pseudo
       setGeneratedKey(key); setGeneratedPseudo(finalPseudo)
       localStorage.setItem("authToken", key); localStorage.setItem("userPseudo", finalPseudo)
@@ -179,6 +197,108 @@ export function LoginPage({ onSuccess, shop }: Props) {
   const copyKey = async () => {
     await navigator.clipboard.writeText(generatedKey); setCopied(true)
     setTimeout(() => setCopied(false), 2500)
+  }
+
+  const resetLostKeyModal = () => {
+    setShowLostKey(false)
+    setLostKeyStep("form")
+    setLostKeyPseudo("")
+    setLostKeyMsg("")
+    setLostKeyError("")
+    setLostKeyToken("")
+    setLostKeyProvPseudo("")
+    setLostKeyCopied(false)
+    setKycError(null)
+    setKycSubmitting(false)
+  }
+
+  const persistProvisionalSession = (token: string, pseudo: string) => {
+    localStorage.setItem("authToken", token)
+    localStorage.setItem("userPseudo", pseudo)
+    localStorage.removeItem("isAdmin")
+    localStorage.removeItem("adminPreview")
+    setGeneratedPseudo(pseudo)
+  }
+
+  const submitLostKey = async () => {
+    if (lostKeySubmitting || !lostKeyPseudo.trim()) return
+    setLostKeySubmitting(true)
+    setLostKeyError("")
+    try {
+      const res = await submitLostKeyClaim({
+        claimedPseudo: lostKeyPseudo.trim(),
+        message: lostKeyMsg.trim() || undefined,
+      })
+      if (!res.ok) {
+        setLostKeyError(res.error || "Impossible d'ouvrir le dossier de récupération.")
+        return
+      }
+      setLostKeyToken(res.provisionalToken)
+      setLostKeyProvPseudo(res.provisionalPseudo)
+      persistProvisionalSession(res.provisionalToken, res.provisionalPseudo)
+      setLostKeyStep("key")
+    } catch {
+      setLostKeyError("Erreur réseau. Réessaie dans un instant.")
+    } finally {
+      setLostKeySubmitting(false)
+    }
+  }
+
+  const copyLostKey = async () => {
+    if (!lostKeyToken) return
+    await navigator.clipboard.writeText(lostKeyToken)
+    setLostKeyCopied(true)
+    setTimeout(() => setLostKeyCopied(false), 2500)
+  }
+
+  const handleRecoveryKyc = async (photo: File, video: File, meta: VerificationMetadata) => {
+    const token = lostKeyToken || localStorage.getItem("authToken")
+    if (!token) {
+      setKycError("Session provisoire introuvable. Recommence la récupération.")
+      return
+    }
+    setKycSubmitting(true)
+    setKycError(null)
+    try {
+      const upload = async (file: File, kind: "photo" | "video") => {
+        const fd = new FormData()
+        fd.append("file", file)
+        fd.append("token", token)
+        fd.append("kind", kind)
+        const res = await fetch("/api/verification/upload", { method: "POST", body: fd })
+        if (!res.ok) throw new Error("upload failed")
+        const data = (await res.json()) as { pathname: string }
+        return data.pathname
+      }
+      const [photoPathname, videoPathname] = await Promise.all([
+        upload(photo, "photo"),
+        upload(video, "video"),
+      ])
+      const saved = await submitVerification({
+        token,
+        photoPathname,
+        videoPathname,
+        siteName: meta.siteName,
+        recordedAt: meta.recordedAt,
+      })
+      if (!saved.ok) {
+        setKycError(saved.error ?? "Échec de l'enregistrement. Réessaie.")
+        return
+      }
+      setLostKeyStep("done")
+    } catch {
+      setKycError("Échec de l'envoi. Vérifie ta connexion et réessaie.")
+    } finally {
+      setKycSubmitting(false)
+    }
+  }
+
+  const finishRecoveryToShop = (openMessaging = false) => {
+    if (lostKeyToken && lostKeyProvPseudo) {
+      persistProvisionalSession(lostKeyToken, lostKeyProvPseudo)
+    }
+    resetLostKeyModal()
+    onSuccess({ openMessaging })
   }
 
   useEffect(() => {
@@ -316,6 +436,9 @@ export function LoginPage({ onSuccess, shop }: Props) {
               {creating && <Loader2 style={{ width:16, height:16, animation:"spin 1s linear infinite" }} />}
               Créer mon accès anonyme
             </button>
+            <button type="button" onClick={()=>{ setShowLostKey(true); setLostKeyStep("form"); setLostKeyError("") }} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"rgba(200,190,170,0.7)", textDecoration:"underline", padding:0, textAlign:"center" }}>
+              Clé perdue ? Récupérer mon compte
+            </button>
           </div>
         )}
 
@@ -350,35 +473,154 @@ export function LoginPage({ onSuccess, shop }: Props) {
         )}
       </div>
 
-      {/* Lost key modal */}
+      {/* Lost key recovery modal — form → clé provisoire → KYC → attente admin */}
       {showLostKey && (
-        <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.75)", padding:16 }}>
-          <div style={{ width:"100%", maxWidth:380, background:cardBg, border:cardBorder, borderRadius:24, padding:"28px 24px", boxShadow:cardShadow }}>
+        <div style={{ position:"fixed", inset:0, zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.8)", padding:16, overflowY:"auto" }}>
+          <div style={{ width:"100%", maxWidth: lostKeyStep === "kyc" ? 480 : 400, maxHeight:"92vh", overflowY:"auto", background:cardBg, border:cardBorder, borderRadius:24, padding:"28px 24px", boxShadow:cardShadow, margin:"auto" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <h2 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"#f5e8c7" }}>Récupération de compte</h2>
-              <button onClick={()=>setShowLostKey(false)} style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(200,190,170,0.7)", padding:4 }}><X style={{ width:18, height:18 }} /></button>
+              <h2 style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"#f5e8c7" }}>
+                {lostKeyStep === "form" && "Récupération de compte"}
+                {lostKeyStep === "key" && "Clé provisoire"}
+                {lostKeyStep === "kyc" && "Vérification d'identité"}
+                {lostKeyStep === "done" && "Dossier envoyé"}
+              </h2>
+              {lostKeyStep !== "kyc" && (
+                <button type="button" onClick={resetLostKeyModal} style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(200,190,170,0.7)", padding:4 }} aria-label="Fermer">
+                  <X style={{ width:18, height:18 }} />
+                </button>
+              )}
             </div>
-            {lostKeyDone ? (
+
+            {/* Étape 1 — demande */}
+            {lostKeyStep === "form" && (
               <>
-                <p style={{ fontSize:14, color:"#4ade80", marginBottom:16 }}>Demande envoyée. Le vendeur la traitera sous 24-48h.</p>
-                <button onClick={()=>{setShowLostKey(false);setLostKeyDone(false)}} style={{ ...btnStyle, width:"100%", padding:12, borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer" }}>Fermer</button>
-              </>
-            ) : (
-              <>
-                <p style={{ margin:"0 0 14px", fontSize:12, lineHeight:1.6, color:"rgba(200,190,170,0.8)" }}>Indique ton pseudo et toute info utile. Une vérification KYC pourra être demandée.</p>
+                <p style={{ margin:"0 0 14px", fontSize:12, lineHeight:1.6, color:"rgba(200,190,170,0.8)" }}>
+                  Indique le pseudo du compte à récupérer. Un accès provisoire sera créé, tu devras refaire le KYC, puis l&apos;admin validera (ou refusera) le rattachement. Tu pourras aussi écrire au vendeur dans la messagerie.
+                </p>
                 <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  <input value={lostKeyPseudo} onChange={(e)=>setLostKeyPseudo(e.target.value)} placeholder="Ton pseudo" style={{ padding:"10px 14px", borderRadius:12, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit" }} />
-                  <textarea value={lostKeyMsg} onChange={(e)=>setLostKeyMsg(e.target.value)} placeholder="Infos supplémentaires (optionnel)" rows={3} style={{ padding:"10px 14px", borderRadius:12, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit", resize:"none" }} />
+                  <input
+                    value={lostKeyPseudo}
+                    onChange={(e)=>setLostKeyPseudo(e.target.value)}
+                    placeholder="Ton pseudo (compte d'origine)"
+                    autoComplete="off"
+                    style={{ padding:"10px 14px", borderRadius:12, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit" }}
+                  />
+                  <textarea
+                    value={lostKeyMsg}
+                    onChange={(e)=>setLostKeyMsg(e.target.value)}
+                    placeholder="Infos utiles pour l'admin (optionnel) — commandes, dates…"
+                    rows={3}
+                    style={{ padding:"10px 14px", borderRadius:12, border:`1px solid ${inputBorder}`, background:"rgba(0,0,0,0.5)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit", resize:"none" }}
+                  />
+                  {lostKeyError && (
+                    <div style={{ display:"flex", gap:8, alignItems:"flex-start", borderRadius:12, border:"1px solid rgba(248,113,113,0.35)", background:"rgba(248,113,113,0.1)", padding:"10px 12px", fontSize:12, color:"#f87171" }}>
+                      <AlertTriangle style={{ width:14, height:14, flexShrink:0, marginTop:1 }} />
+                      {lostKeyError}
+                    </div>
+                  )}
                   <div style={{ display:"flex", gap:8 }}>
-                    <button onClick={()=>setShowLostKey(false)} style={{ flex:1, padding:"10px", borderRadius:999, border:"1px solid rgba(255,202,40,0.2)", background:"transparent", color:"rgba(200,190,170,0.8)", fontSize:13, cursor:"pointer" }}>Annuler</button>
-                    <button disabled={lostKeySubmitting || !lostKeyPseudo.trim()} onClick={async()=>{
-                      setLostKeySubmitting(true)
-                      await submitLostKeyClaim({ claimedPseudo:lostKeyPseudo, clientMessage:lostKeyMsg })
-                      setLostKeyDone(true); setLostKeySubmitting(false)
-                    }} style={{ ...btnStyle, flex:1, padding:"10px", borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:lostKeySubmitting||!lostKeyPseudo.trim()?0.5:1 }}>
-                      {lostKeySubmitting?"...":"Envoyer"}
+                    <button type="button" onClick={resetLostKeyModal} style={{ flex:1, padding:"10px", borderRadius:999, border:"1px solid rgba(255,202,40,0.2)", background:"transparent", color:"rgba(200,190,170,0.8)", fontSize:13, cursor:"pointer" }}>Annuler</button>
+                    <button
+                      type="button"
+                      disabled={lostKeySubmitting || !lostKeyPseudo.trim()}
+                      onClick={submitLostKey}
+                      style={{ ...btnStyle, flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"10px", borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer", opacity:lostKeySubmitting||!lostKeyPseudo.trim()?0.5:1 }}
+                    >
+                      {lostKeySubmitting ? <Loader2 style={{ width:14, height:14, animation:"spin 1s linear infinite" }} /> : null}
+                      {lostKeySubmitting ? "Envoi…" : "Continuer"}
                     </button>
                   </div>
+                </div>
+              </>
+            )}
+
+            {/* Étape 2 — clé provisoire à noter */}
+            {lostKeyStep === "key" && (
+              <>
+                <div style={{ textAlign:"center", marginBottom:16 }}>
+                  <CheckCircle2 style={{ margin:"0 auto 10px", width:40, height:40, color:"#4ade80" }} />
+                  <p style={{ margin:0, fontSize:13, color:"rgba(200,190,170,0.85)", lineHeight:1.55 }}>
+                    Compte provisoire créé{lostKeyProvPseudo ? <> (<strong style={{ color:"#f5e8c7" }}>{lostKeyProvPseudo}</strong>)</> : null}.
+                    Note cette clé — c&apos;est ton accès en attendant la validation.
+                  </p>
+                </div>
+                <div style={{ marginBottom:16, borderRadius:16, border:"1px solid rgba(245,158,11,0.35)", background:"rgba(245,158,11,0.08)", padding:14 }}>
+                  <p style={{ margin:"0 0 8px", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"#fbbf24" }}>Clé provisoire — NOTE-LA</p>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <code style={{ flex:1, wordBreak:"break-all", borderRadius:10, background:"rgba(0,0,0,0.4)", padding:"8px 10px", fontSize:11, color:"#f5e8c7" }}>{lostKeyToken}</code>
+                    <button type="button" onClick={copyLostKey} style={{ flexShrink:0, borderRadius:10, background:lostKeyCopied?"rgba(74,222,128,0.2)":"rgba(255,202,40,0.15)", border:"none", padding:8, cursor:"pointer" }}>
+                      {lostKeyCopied ? <CheckCircle2 style={{ width:16, height:16, color:"#4ade80" }} /> : <Copy style={{ width:16, height:16, color:"#ffca28" }} />}
+                    </button>
+                  </div>
+                </div>
+                <p style={{ margin:"0 0 16px", fontSize:12, lineHeight:1.55, color:"rgba(200,190,170,0.75)" }}>
+                  Prochaine étape obligatoire : refaire le KYC (selfie + vidéo). L&apos;admin validera ensuite le rattachement à <strong style={{ color:"#f5e8c7" }}>{lostKeyPseudo || "ton compte"}</strong>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setLostKeyStep("kyc")}
+                  style={{ ...btnStyle, display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:13, borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:10 }}
+                >
+                  <ShieldCheck style={{ width:16, height:16 }} />
+                  Passer le KYC maintenant
+                </button>
+                <button
+                  type="button"
+                  onClick={() => finishRecoveryToShop(true)}
+                  style={{ width:"100%", padding:11, borderRadius:999, border:"1px solid rgba(255,202,40,0.22)", background:"transparent", color:"rgba(200,190,170,0.9)", fontSize:12, cursor:"pointer" }}
+                >
+                  Faire le KYC plus tard (ouvrir la messagerie)
+                </button>
+              </>
+            )}
+
+            {/* Étape 3 — KYC */}
+            {lostKeyStep === "kyc" && (
+              <>
+                <p style={{ margin:"0 0 14px", fontSize:12, lineHeight:1.55, color:"rgba(200,190,170,0.8)" }}>
+                  Même procédure que pour une 1<sup>re</sup> commande. Une fois validé par l&apos;admin, tes commandes, messages et points seront rattachés.
+                </p>
+                <SelfieVerificationModal
+                  onComplete={handleRecoveryKyc}
+                  submitting={kycSubmitting}
+                  submitError={kycError}
+                />
+                <button
+                  type="button"
+                  onClick={() => setLostKeyStep("key")}
+                  style={{ marginTop:12, width:"100%", padding:10, borderRadius:999, border:"1px solid rgba(255,202,40,0.18)", background:"transparent", color:"rgba(200,190,170,0.75)", fontSize:12, cursor:"pointer" }}
+                >
+                  Retour
+                </button>
+              </>
+            )}
+
+            {/* Étape 4 — terminé, en attente admin */}
+            {lostKeyStep === "done" && (
+              <>
+                <div style={{ textAlign:"center", marginBottom:18 }}>
+                  <CheckCircle2 style={{ margin:"0 auto 10px", width:44, height:44, color:"#4ade80" }} />
+                  <p style={{ margin:0, fontSize:14, color:"#4ade80", fontWeight:600 }}>KYC envoyé</p>
+                  <p style={{ margin:"10px 0 0", fontSize:12, lineHeight:1.6, color:"rgba(200,190,170,0.85)" }}>
+                    L&apos;admin examine ton dossier. Tu restes connecté avec ta clé provisoire. Tu peux échanger par message si besoin.
+                  </p>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  <button
+                    type="button"
+                    onClick={() => finishRecoveryToShop(true)}
+                    style={{ ...btnStyle, display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:13, borderRadius:999, border:"none", fontSize:13, fontWeight:700, cursor:"pointer" }}
+                  >
+                    <MessageCircle style={{ width:16, height:16 }} />
+                    Ouvrir la messagerie
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => finishRecoveryToShop(false)}
+                    style={{ width:"100%", padding:11, borderRadius:999, border:"1px solid rgba(255,202,40,0.22)", background:"transparent", color:"#f5e8c7", fontSize:13, cursor:"pointer" }}
+                  >
+                    Continuer vers le catalogue
+                  </button>
                 </div>
               </>
             )}

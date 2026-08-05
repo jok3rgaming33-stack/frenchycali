@@ -9,6 +9,8 @@ import { Send, RefreshCw } from "lucide-react"
 interface Props {
   initialThreads: OrderThread[]
   mode: "orders" | "locker" | "past" | "messages"
+  /** Ouvre automatiquement ce fil (ex. récupération clé perdue). */
+  initialThreadId?: number | null
 }
 
 const ACCENT = "#ffca28"
@@ -17,9 +19,12 @@ const BG_CARD = "rgba(20,18,12,.88)"
 
 const STATUSES = ["nouveau","confirme","en_preparation","en_route","livree","annulee","locker_en_attente_paiement","locker_paiement_recu","locker_expedie","locker_livre"]
 
-export function VendorInbox({ initialThreads, mode }: Props) {
+export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Props) {
   const [threads, setThreads] = useState<OrderThread[]>(initialThreads)
-  const [selected, setSelected] = useState<OrderThread | null>(null)
+  const [selected, setSelected] = useState<OrderThread | null>(() => {
+    if (initialThreadId == null) return null
+    return initialThreads.find((t) => t.id === initialThreadId) ?? null
+  })
   const [messages, setMessages] = useState<{ id: number; sender: string; body: string; createdAt: Date | string }[]>([])
   const [newMsg, setNewMsg] = useState("")
   const [sending, setSending] = useState(false)
@@ -40,6 +45,12 @@ export function VendorInbox({ initialThreads, mode }: Props) {
       setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100)
     } catch {}
   }
+
+  useEffect(() => {
+    if (initialThreadId == null) return
+    const found = threads.find((t) => t.id === initialThreadId)
+    if (found) setSelected(found)
+  }, [initialThreadId, threads])
 
   useEffect(() => {
     if (!selected) return

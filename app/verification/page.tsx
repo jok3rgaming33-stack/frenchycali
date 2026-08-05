@@ -13,6 +13,7 @@ export default function VerificationPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [fromRecovery, setFromRecovery] = useState(false)
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
@@ -22,6 +23,7 @@ export default function VerificationPage() {
       return
     }
     setToken(t)
+    setFromRecovery(new URLSearchParams(window.location.search).get("from") === "recovery")
   }, [router])
 
   const handleComplete = async (photo: File, video: File, meta: VerificationMetadata) => {
@@ -74,16 +76,27 @@ export default function VerificationPage() {
         <div>
           <h1 className="mb-2 text-2xl font-bold text-foreground">Vérification soumise</h1>
           <p className="text-muted-foreground text-pretty">
-            Ta vérification a bien été envoyée. Elle sera examinée prochainement.<br />
-            Tu peux maintenant retourner sur le site et passer ta commande.
+            {fromRecovery ? (
+              <>
+                Ton KYC de récupération a bien été envoyé. L&apos;admin l&apos;examinera sous peu.
+                <br />
+                Tu peux déjà écrire au vendeur dans la messagerie.
+              </>
+            ) : (
+              <>
+                Ta vérification a bien été envoyée. Elle sera examinée prochainement.
+                <br />
+                Tu peux maintenant retourner sur le site et passer ta commande.
+              </>
+            )}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => router.push("/")}
+          onClick={() => router.push(fromRecovery ? "/choix" : "/")}
           className="rounded-2xl bg-accent px-6 py-3 font-semibold text-accent-foreground transition-opacity hover:opacity-90"
         >
-          Retour à l&apos;accueil
+          {fromRecovery ? "Retour au choix d&apos;univers" : "Retour à l&apos;accueil"}
         </button>
       </div>
     )
