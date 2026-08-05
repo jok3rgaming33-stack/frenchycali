@@ -74,9 +74,18 @@ export function LoginPage({ onSuccess, shop }: Props) {
     setBioReady(hasLocalWebAuthn())
     ;(async () => {
       try {
+        if (typeof window === "undefined") return
+        // Check basic API availability first — avoid false negatives from API call
+        if (typeof window.PublicKeyCredential === "undefined") return
         const api = await loadWebAuthnBrowser()
         if (!api?.browserSupportsWebAuthn()) return
-        setBioAvailable(await platformAuthenticatorAvailable())
+        // platformAuthenticatorAvailable can throw on some Android browsers — treat as available
+        try {
+          const avail = await platformAuthenticatorAvailable()
+          setBioAvailable(avail)
+        } catch {
+          setBioAvailable(true) // optimistic: let the actual WebAuthn call fail gracefully
+        }
       } catch { /* ignore */ }
     })()
   }, [])
@@ -241,14 +250,31 @@ export function LoginPage({ onSuccess, shop }: Props) {
             ))}
           </div>
         )}
-        {bioAvailable && !bioReady && (
-          <div style={{ marginBottom:16, borderRadius:14, border:"1px solid rgba(255,202,40,0.12)", background:"rgba(255,202,40,0.04)", padding:14 }}>
-            <p style={{ margin:"0 0 8px", fontSize:12, color:"rgba(200,190,170,0.8)" }}>Activer le déverrouillage rapide sur cet appareil</p>
-            <button onClick={enrollBiometry} disabled={bioEnrolling} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"10px", borderRadius:12, border:"1px solid rgba(255,202,40,0.2)", background:"transparent", color:"#f5e8c7", fontSize:13, cursor:"pointer" }}>
-              {bioEnrolling ? <Loader2 style={{ width:14, height:14, animation:"spin 1s linear infinite" }} /> : <Fingerprint style={{ width:14, height:14, color:"#ffca28" }} />}
-              Activer {biometryLabel()}
+        {bioAvailable && !bioReady && !bioEnrollMsg && (
+          <div style={{ marginBottom:20, borderRadius:16, border:`1px solid ${isDelivery ? "rgba(0,255,170,0.25)" : "rgba(255,202,40,0.28)"}`, background: isDelivery ? "rgba(0,255,170,0.06)" : "rgba(255,202,40,0.07)", padding:"16px 18px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+              <Fingerprint style={{ width:20, height:20, color: isDelivery ? "#00ff9d" : "#ffca28", flexShrink:0 }} />
+              <p style={{ margin:0, fontSize:13, fontWeight:600, color:"#f5e8c7" }}>Activer la connexion rapide</p>
+            </div>
+            <p style={{ margin:"0 0 12px", fontSize:12, lineHeight:1.6, color:"rgba(200,190,170,0.75)" }}>
+              Connecte-toi la prochaine fois en un seul geste avec {biometryLabel()} — sans retaper ta clé.
+            </p>
+            <button onClick={enrollBiometry} disabled={bioEnrolling}
+              style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, width:"100%", padding:"11px", borderRadius:12,
+                border: `1px solid ${isDelivery ? "rgba(0,255,170,0.35)" : "rgba(255,202,40,0.35)"}`,
+                background: isDelivery ? "rgba(0,255,170,0.1)" : "rgba(255,202,40,0.1)",
+                color:"#f5e8c7", fontSize:13, fontWeight:600, cursor:bioEnrolling?"not-allowed":"pointer",
+                opacity:bioEnrolling?0.7:1 }}>
+              {bioEnrolling
+                ? <><Loader2 style={{ width:14, height:14, animation:"spin 1s linear infinite" }} /> Activation...</>
+                : <><Fingerprint style={{ width:14, height:14, color: isDelivery ? "#00ff9d" : "#ffca28" }} /> Activer {biometryLabel()}</>}
             </button>
-            {bioEnrollMsg && <p style={{ margin:"8px 0 0", textAlign:"center", fontSize:12, color:"#4ade80" }}>{bioEnrollMsg}</p>}
+          </div>
+        )}
+        {bioEnrollMsg && (
+          <div style={{ marginBottom:16, borderRadius:12, border:"1px solid rgba(74,222,128,0.3)", background:"rgba(74,222,128,0.08)", padding:"10px 14px", display:"flex", alignItems:"center", gap:8 }}>
+            <CheckCircle2 style={{ width:15, height:15, color:"#4ade80", flexShrink:0 }} />
+            <p style={{ margin:0, fontSize:13, color:"#4ade80" }}>{bioEnrollMsg}</p>
           </div>
         )}
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>

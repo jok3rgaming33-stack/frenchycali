@@ -49,23 +49,54 @@ export async function ensureWebAuthnSchema(): Promise<boolean> {
   }
 }
 
+// Known public-suffix eTLDs that must NOT be used as rpID
+const ETLD_BLOCKLIST = new Set(["vercel.app", "netlify.app", "pages.dev", "github.io", "web.app", "firebaseapp.com"])
+
 async function getWebAuthnConfig() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://frenchycali.com"
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://frenchycali.vercel.app"
   const origins = new Set<string>()
-  let envHost = "frenchycali.com"
-  try { const u = new URL(siteUrl); envHost = u.hostname; origins.add(u.origin) } catch { origins.add("https://frenchycali.com") }
+  let envHost = "frenchycali.vercel.app"
+  try { const u = new URL(siteUrl); envHost = u.hostname; origins.add(u.origin) } catch { origins.add("https://frenchycali.vercel.app") }
+
+  // Collect the actual request host from headers (most reliable on Vercel)
+  let requestHost = ""
+  let requestProto = "https"
   try {
     const h = await headers()
-    const host = (h.get("x-forwarded-host") || h.get("host") || "").split(",")[0].trim()
-    const proto = (h.get("x-forwarded-proto") || "https").split(",")[0].trim()
-    if (host) { origins.add(`${proto}://${host}`); origins.add(`${proto}://${host.replace(/:\d+$/, "")}`) }
+    requestHost = (h.get("x-forwarded-host") || h.get("host") || "").split(",")[0].trim()
+    requestProto = (h.get("x-forwarded-proto") || "https").split(",")[0].trim()
+    if (requestHost) {
+      origins.add(`${requestProto}://${requestHost}`)
+      origins.add(`${requestProto}://${requestHost.replace(/:\d+$/, "")}`)
+    }
   } catch { /* ignore */ }
-  const primaryHost = (() => { try { return new URL([...origins][0]).hostname } catch { return envHost } })()
-  const isLocal = primaryHost === "localhost" || primaryHost === "127.0.0.1" || process.env.NODE_ENV === "development"
-  let rpID = primaryHost.replace(/:\d+$/, "")
-  if (!isLocal) { const parts = rpID.split("."); if (parts.length >= 2) rpID = parts.slice(-2).join(".") }
-  else { rpID = "localhost"; origins.add("http://localhost:3000"); origins.add("http://127.0.0.1:3000") }
-  if (!isLocal) { origins.add(`https://${rpID}`); origins.add(`https://www.${rpID}`) }
+
+  // Determine the effective hostname (prefer request host over env)
+  const effectiveHost = (requestHost || envHost).replace(/:\d+$/, "")
+  const isLocal = effectiveHost === "localhost" || effectiveHost === "127.0.0.1" || process.env.NODE_ENV === "development"
+
+  let rpID: string
+  if (isLocal) {
+    rpID = "localhost"
+    origins.add("http://localhost:3000")
+    origins.add("http://127.0.0.1:3000")
+  } else {
+    // Use the FULL hostname as rpID — never collapse to an eTLD-only value.
+    // e.g. "frenchycali-abc123.vercel.app" stays as-is (valid subdomain rpID).
+    // Only strip port from the host.
+    rpID = effectiveHost
+
+    // Safety: if the effective host is itself an eTLD (e.g. "vercel.app"), fall back to envHost
+    if (ETLD_BLOCKLIST.has(rpID)) {
+      rpID = envHost
+    }
+
+    // Add canonical origins
+    origins.add(`https://${rpID}`)
+    // Also accept the env siteUrl origin
+    try { origins.add(new URL(siteUrl).origin) } catch { /* ignore */ }
+  }
+
   return { rpID, rpName: "FrenchyCali", origins: [...origins] }
 }
 
