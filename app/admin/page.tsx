@@ -3,7 +3,6 @@ import { getThreads, getActiveOrders, getLockerOrders, getDiscussions, getPastOr
 import { listUsers } from "@/app/actions/account"
 import { listVerifications } from "@/app/actions/verification"
 import { listLoginLogs } from "@/app/actions/login-logs"
-import { getProfitData } from "@/app/actions/profit"
 import { listBroadcastNotifications } from "@/app/actions/notifications"
 import { listStaff } from "@/app/actions/staff"
 import { AdminGate } from "@/components/admin-gate"
@@ -32,7 +31,6 @@ export default async function AdminPage() {
     usersList: [] as Awaited<ReturnType<typeof listUsers>>,
     verifications: [] as Awaited<ReturnType<typeof listVerifications>>,
     loginLogs: [] as Awaited<ReturnType<typeof listLoginLogs>>,
-    profitData: null as Awaited<ReturnType<typeof getProfitData>> | null,
     notifHistory: [] as Awaited<ReturnType<typeof listBroadcastNotifications>>,
     staffList: [] as Awaited<ReturnType<typeof listStaff>>,
   }
@@ -48,7 +46,6 @@ export default async function AdminPage() {
       usersList,
       verifications,
       loginLogs,
-      profitData,
       notifHistory,
       staffList,
     ] = await Promise.all([
@@ -60,7 +57,6 @@ export default async function AdminPage() {
       listUsers(),
       listVerifications(),
       listLoginLogs(200),
-      getProfitData(),
       listBroadcastNotifications(50),
       listStaff(),
     ])
@@ -73,7 +69,6 @@ export default async function AdminPage() {
       usersList,
       verifications,
       loginLogs,
-      profitData,
       notifHistory,
       staffList,
     }
@@ -91,7 +86,6 @@ export default async function AdminPage() {
       initialUsers={data.usersList}
       initialVerifications={data.verifications}
       initialLoginLogs={data.loginLogs}
-      initialProfitData={data.profitData!}
       initialNotificationsHistory={data.notifHistory}
       initialStaff={data.staffList}
     />

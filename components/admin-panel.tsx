@@ -20,14 +20,12 @@ import { AdminLogistics } from "@/components/admin-logistics"
 import { AdminCartSettings } from "@/components/admin-cart-settings"
 import { AdminLoginLogs } from "@/components/admin-login-logs"
 import type { LoginLogRow } from "@/app/actions/login-logs"
-import { AdminProfit } from "@/components/admin-profit"
-import type { ProfitSummary } from "@/app/actions/profit"
 import { AdminNotifications } from "@/components/admin-notifications"
 import type { BroadcastNotificationRow } from "@/app/actions/notifications"
 import { adminLogout, startAdminClientPreview } from "@/app/actions/admin-auth"
 import { getAdminBadgeCounts } from "@/app/actions/messaging"
 import { AdminAppBadgeSync } from "@/components/app-badge-sync"
-import { MessageSquare, Map, ListOrdered, Users, TrendingUp, LogOut, Construction, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound, ChevronDown } from "lucide-react"
+import { MessageSquare, Map, ListOrdered, Users, LogOut, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound, ChevronDown } from "lucide-react"
 import { PushToggle } from "@/components/push-toggle"
 
 const CLIENT_SHOPS = [
@@ -36,7 +34,7 @@ const CLIENT_SHOPS = [
   { href: "/calidelivery?preview=1", label: "CaliDelivery", hint: "Interface néon delivery" },
 ] as const
 
-type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "carte" | "commandes" | "utilisateurs" | "verifications" | "recuperations" | "produits" | "promos" | "logistique" | "news" | "admins" | "profits" | "connexions" | "notifications" | "staff"
+type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "carte" | "commandes" | "utilisateurs" | "verifications" | "recuperations" | "produits" | "promos" | "logistique" | "news" | "admins" | "connexions" | "notifications" | "staff"
 
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "commandes-en-cours", label: "Commandes en cours", icon: Inbox },
@@ -56,12 +54,7 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "news", label: "News", icon: Newspaper },
   { id: "staff", label: "Whitelist", icon: Users },
   { id: "admins", label: "Admins", icon: UserCog },
-  { id: "profits", label: "Profits", icon: TrendingUp },
 ]
-
-const COMING_SOON: Record<"profits", { title: string; desc: string }> = {
-  profits: { title: "Récapitulatif des profits", desc: "Suivi des revenus, marges et statistiques de vente. En cours de développement." },
-}
 
 export function AdminPanel({
   initialActiveOrders,
@@ -71,7 +64,6 @@ export function AdminPanel({
   initialUsers,
   initialVerifications,
   initialLoginLogs,
-  initialProfitData,
   initialNotificationsHistory,
   initialPastOrders,
   initialStaff,
@@ -84,7 +76,6 @@ export function AdminPanel({
   initialUsers: AdminUserRow[]
   initialVerifications: VerificationRow[]
   initialLoginLogs: LoginLogRow[]
-  initialProfitData: ProfitSummary
   initialNotificationsHistory: BroadcastNotificationRow[]
   initialStaff: StaffRow[]
 }) {
@@ -333,8 +324,6 @@ export function AdminPanel({
           <AdminNews />
         ) : tab === "connexions" ? (
           <AdminLoginLogs initialLogs={initialLoginLogs} />
-        ) : tab === "profits" ? (
-          <AdminProfit initialData={initialProfitData} />
         ) : tab === "staff" ? (
           <AdminStaff initialStaff={initialStaff} />
         ) : tab === "admins" ? (
