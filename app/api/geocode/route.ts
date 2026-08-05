@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { MAP_REGION_DEFAULTS, type MapRegion } from "@/app/actions/settings"
+import { MAP_REGION_DEFAULTS, type MapRegion } from "@/lib/map-regions"
 
 // Distance Haversine en km
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {

@@ -5,12 +5,8 @@ import type { OrderThread } from "@/lib/db/schema"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { isClosedStatus } from "@/lib/order-status"
 import { Map as MapIcon, MapPinOff, Route, RotateCcw, Truck, Store, Loader2, Clock, Save, Check } from "lucide-react"
-import {
-  getMapOrigins,
-  setMapOrigin,
-  MAP_REGION_DEFAULTS,
-  type MapRegion,
-} from "@/app/actions/settings"
+import { getMapOrigins, setMapOrigin } from "@/app/actions/settings"
+import { MAP_REGION_DEFAULTS, type MapRegion } from "@/lib/map-regions"
 import "leaflet/dist/leaflet.css"
 
 const REGION_TABS: { id: MapRegion; label: string; hint: string }[] = [
