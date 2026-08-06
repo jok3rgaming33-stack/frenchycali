@@ -58,6 +58,7 @@ function TokenCell({ token }: { token: string | null }) {
 }
 
 type Period = "all" | "week" | "month"
+type PayFilter = "all" | "unpaid" | "paid" | "partial" | "failed" | "none"
 
 function startOf(period: Period): Date | null {
   if (period === "all") return null
@@ -79,9 +80,36 @@ const PERIOD_LABELS: Record<Period, string> = {
   month: "Ce mois",
 }
 
+const PAY_FILTER_LABELS: Record<PayFilter, string> = {
+  all: "Tous paiements",
+  unpaid: "Non payées",
+  paid: "Payées",
+  partial: "Partielles",
+  failed: "Échouées",
+  none: "Sans crypto",
+}
+
+function matchesPayFilter(t: OrderThread, filter: PayFilter): boolean {
+  if (filter === "all") return true
+  const key = paymentStatusMeta(t.paymentStatus).key
+  const hasGateway = Boolean(t.paymentProvider || t.paymentStatus || t.paymentPayUrl)
+
+  if (filter === "none") return !hasGateway
+  if (filter === "paid") return key === "confirmed"
+  if (filter === "partial") return key === "partial"
+  if (filter === "failed") return key === "failed"
+  // unpaid : gateway initié et pas encore payé (ni failed final optionnel — on inclut awaiting/partial)
+  if (filter === "unpaid") {
+    if (!hasGateway) return false
+    return key !== "confirmed" && key !== "failed"
+  }
+  return true
+}
+
 export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
   const [query, setQuery] = useState("")
   const [period, setPeriod] = useState<Period>("all")
+  const [payFilter, setPayFilter] = useState<PayFilter>("all")
   const [rows, setRows] = useState<OrderThread[]>(threads)
   const [pendingId, setPendingId] = useState<number | null>(null)
   const [confirmOrder, setConfirmOrder] = useState<OrderThread | null>(null)
@@ -106,11 +134,12 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const sorted = [...periodFiltered].sort(
+    let list = periodFiltered.filter((t) => matchesPayFilter(t, payFilter))
+    list = [...list].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     )
-    if (!q) return sorted
-    return sorted.filter(
+    if (!q) return list
+    return list.filter(
       (t) =>
         t.customerName.toLowerCase().includes(q) ||
         (t.customerToken ?? "").toLowerCase().includes(q) ||
@@ -118,13 +147,18 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
         (t.paymentStatus ?? "").toLowerCase().includes(q) ||
         (t.paymentCrypto ?? "").toLowerCase().includes(q),
     )
-  }, [periodFiltered, query])
+  }, [periodFiltered, query, payFilter])
+
+  const unpaidCount = useMemo(
+    () => periodFiltered.filter((t) => matchesPayFilter(t, "unpaid")).length,
+    [periodFiltered],
+  )
 
   const totals = useMemo(() => {
-    const revenue = periodFiltered.reduce((sum, t) => sum + (t.total ?? 0), 0)
-    const points = periodFiltered.reduce((sum, t) => sum + computeLoyaltyPoints(t.total ?? 0), 0)
-    return { count: periodFiltered.length, revenue, points }
-  }, [periodFiltered])
+    const revenue = filtered.reduce((sum, t) => sum + (t.total ?? 0), 0)
+    const points = filtered.reduce((sum, t) => sum + computeLoyaltyPoints(t.total ?? 0), 0)
+    return { count: filtered.length, revenue, points }
+  }, [filtered])
 
   const handleDelete = async (order: OrderThread) => {
     setPendingId(order.id)
@@ -169,39 +203,150 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
         </div>
       </div>
 
-      {/* Filtres période + recherche */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1 rounded-xl border border-border bg-background/60 p-1">
-          <Calendar className="ml-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+      {/* Filtres période + paiement + recherche */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 rounded-xl border border-border bg-background/60 p-1">
+            <Calendar className="ml-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  period === p
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          <div className="relative flex-1 max-w-sm min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher (pseudo, token, produit, crypto)…"
+              className="w-full rounded-xl border border-border bg-background/60 py-2.5 pl-9 pr-3 text-sm outline-none transition-colors focus:border-accent"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Wallet className="mr-1 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          {(Object.keys(PAY_FILTER_LABELS) as PayFilter[]).map((f) => (
             <button
-              key={p}
+              key={f}
               type="button"
-              onClick={() => setPeriod(p)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                period === p
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+              onClick={() => setPayFilter(f)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                payFilter === f
+                  ? f === "unpaid"
+                    ? "border-sky-400/50 bg-sky-500/20 text-sky-300"
+                    : f === "paid"
+                      ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-300"
+                      : "border-accent/50 bg-accent/20 text-accent"
+                  : "border-border bg-background/50 text-muted-foreground hover:border-accent/30 hover:text-foreground"
               }`}
             >
-              {PERIOD_LABELS[p]}
+              {PAY_FILTER_LABELS[f]}
+              {f === "unpaid" && unpaidCount > 0 && (
+                <span className="rounded-full bg-sky-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                  {unpaidCount > 99 ? "99+" : unpaidCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher (pseudo, token, produit)…"
-            className="w-full rounded-xl border border-border bg-background/60 py-2.5 pl-9 pr-3 text-sm outline-none transition-colors focus:border-accent"
-          />
-        </div>
       </div>
 
-      {/* Tableau */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      {/* Cartes mobile (badge paiement visible) */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {filtered.length === 0 ? (
+          <p className="rounded-2xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+            Aucune commande à afficher.
+          </p>
+        ) : (
+          filtered.map((t) => {
+            const meta = statusMeta(t.status)
+            const pay = paymentStatusMeta(t.paymentStatus)
+            const crypto = formatPaymentCrypto(t.paymentCrypto)
+            const hasPay = Boolean(t.paymentProvider || t.paymentStatus || t.paymentPayUrl)
+            return (
+              <article
+                key={t.id}
+                className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+              >
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{t.customerName}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.badge}`}>
+                        {meta.label}
+                      </span>
+                      {hasPay ? (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pay.badge}`}>
+                          <Wallet className="h-3 w-3" aria-hidden="true" />
+                          {pay.label}
+                          {crypto ? ` · ${crypto}` : ""}
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                          Sans crypto
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-base font-bold text-accent">{t.total}€</div>
+                    <div className="text-[10px] text-muted-foreground">{formatDate(t.updatedAt ?? t.createdAt)}</div>
+                  </div>
+                </div>
+                <p className="mb-2 line-clamp-2 text-xs text-muted-foreground">{t.products ?? "—"}</p>
+                {t.paymentPayUrl && pay.key !== "confirmed" && (
+                  <a
+                    href={t.paymentPayUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mb-3 inline-flex items-center gap-1 text-xs font-medium text-accent"
+                  >
+                    Lien paiement <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent">
+                    <Coins className="h-3 w-3" />+{computeLoyaltyPoints(t.total ?? 0)} pts
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openDetail(t)}
+                      disabled={loadingDetail === t.id}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-xs font-medium"
+                    >
+                      {loadingDetail === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                      Voir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmOrder(t)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            )
+          })
+        )}
+      </div>
+
+      {/* Tableau desktop */}
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-card md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] border-collapse text-sm">
             <thead>
