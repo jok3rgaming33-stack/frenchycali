@@ -141,3 +141,12 @@ body {
   pointer-events: none;
   z-index: 0;
 }
+
+/* Badge produit « Arrivage » — clignotement doux */
+@keyframes badge-blink-kf {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50% { opacity: 0.55; filter: brightness(1.25); }
+}
+.badge-blink {
+  animation: badge-blink-kf 1.2s ease-in-out infinite;
+}

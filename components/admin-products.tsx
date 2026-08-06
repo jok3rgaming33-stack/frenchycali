@@ -6,7 +6,32 @@ import { Plus, Trash2, Pencil, Minus, X, Loader2, PackagePlus, Save, GripVertica
 import { BADGE_OPTIONS } from "@/lib/badges"
 import { uploadMedia } from "@/lib/upload-media"
 import { BlobMedia } from "@/components/blob-media"
-import { listProducts, saveProduct, deleteProduct, adjustStock, reorderProducts, deleteProductMedia, type ProductInput } from "@/app/actions/products"
+import {
+  listProducts,
+  saveProduct,
+  deleteProduct,
+  adjustStock,
+  setProductRegion,
+  reorderProducts,
+  deleteProductMedia,
+  type ProductInput,
+} from "@/app/actions/products"
+
+const SHOP_REGIONS = [
+  { value: "caliboyz31", label: "Cali Boyz 31" },
+  { value: "caliboyz94", label: "Cali Boyz 94" },
+  { value: "calidelivery", label: "CaliDelivery" },
+  { value: "both", label: "Toutes les pages" },
+] as const
+
+function normalizeShopRegion(raw: string | null | undefined): string {
+  const r = (raw ?? "both").toLowerCase()
+  if (r === "31") return "caliboyz31"
+  if (r === "94") return "caliboyz94"
+  if (r === "delivery") return "calidelivery"
+  if (SHOP_REGIONS.some((o) => o.value === r)) return r
+  return "both"
+}
 import { listCategories, createCategory, renameCategory, deleteCategory, reorderCategories } from "@/app/actions/categories"
 import type { Product, ProductVariant, ProductMedia, Category } from "@/lib/db/schema"
 
@@ -14,6 +39,7 @@ type FormState = {
   id?: number
   title: string
   section: string
+  region: string
   image: string
   media: ProductMedia[]
   symbol: string
@@ -31,6 +57,7 @@ function emptyForm(section: string): FormState {
   return {
     title: "",
     section,
+    region: "both",
     image: "",
     media: [],
     symbol: "",
@@ -50,6 +77,7 @@ function toForm(p: Product): FormState {
     id: p.id,
     title: p.title,
     section: p.section,
+    region: normalizeShopRegion(p.region),
     image: p.image ?? "",
     media: p.media ?? [],
     symbol: p.symbol ?? "",
@@ -70,6 +98,8 @@ export function AdminProducts() {
   const [form, setForm] = useState<FormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Évite de fermer la modale si on relâche la souris hors panneau après une sélection de texte
+  const modalBackdropDown = useRef(false)
 
   // Drag & drop produits (réordonnancement au sein d'une catégorie).
   const dragProduct = useRef<{ id: number; section: string } | null>(null)
@@ -95,6 +125,7 @@ export function AdminProducts() {
       id: form.id,
       title: form.title,
       section: form.section,
+      region: form.region,
       image: form.image,
       media: form.media,
       symbol: form.symbol,
@@ -124,6 +155,11 @@ export function AdminProducts() {
 
   const quickStock = async (id: number, delta: number) => {
     await adjustStock(id, delta)
+    mutate()
+  }
+
+  const quickRegion = async (id: number, region: string) => {
+    await setProductRegion(id, region)
     mutate()
   }
 
@@ -261,9 +297,35 @@ export function AdminProducts() {
                         </div>
                       )}
 
+                      <div className="mt-3">
+                        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Affiché sur
+                        </label>
+                        <select
+                          value={normalizeShopRegion(p.region)}
+                          onChange={(e) => quickRegion(p.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="input w-full py-1.5 text-xs"
+                          aria-label={`Boutique d'affichage pour ${p.title}`}
+                        >
+                          {SHOP_REGIONS.map((r) => (
+                            <option key={r.value} value={r.value}>
+                              {r.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
                       <div className="mt-3 flex items-center justify-between rounded-xl bg-background/60 p-2">
                         <span className="text-xs text-muted-foreground">Stock</span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => quickStock(p.id, -10)}
+                            className="rounded-lg bg-destructive/15 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/25"
+                            aria-label="Diminuer le stock de 10"
+                          >
+                            -10
+                          </button>
                           <button
                             onClick={() => quickStock(p.id, -1)}
                             className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary text-secondary-foreground hover:bg-muted"
@@ -284,6 +346,7 @@ export function AdminProducts() {
                           <button
                             onClick={() => quickStock(p.id, 10)}
                             className="rounded-lg bg-accent/15 px-2 py-1 text-xs font-medium text-accent hover:bg-accent/25"
+                            aria-label="Augmenter le stock de 10"
                           >
                             +10
                           </button>
@@ -299,11 +362,29 @@ export function AdminProducts() {
       )}
 
       {form && (
-        <div className="fixed inset-0 z-[120] flex justify-end bg-background/80 backdrop-blur-sm" onClick={() => setForm(null)}>
-          <div className="flex h-full w-full max-w-lg flex-col border-l border-border bg-card" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[120] flex justify-end bg-background/80 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            modalBackdropDown.current = e.target === e.currentTarget
+          }}
+          onClick={(e) => {
+            // Fermer uniquement si le clic a commencé ET s'est terminé sur le fond
+            // (évite la fermeture lors d'une sélection de texte qui se termine hors panneau)
+            if (modalBackdropDown.current && e.target === e.currentTarget) {
+              setForm(null)
+            }
+            modalBackdropDown.current = false
+          }}
+        >
+          <div
+            className="flex h-full w-full max-w-lg flex-col border-l border-border bg-card"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <h3 className="text-lg font-bold">{form.id ? "Modifier le produit" : "Nouveau produit"}</h3>
               <button
+                type="button"
                 onClick={() => setForm(null)}
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-secondary-foreground hover:bg-muted"
                 aria-label="Fermer"
@@ -327,6 +408,23 @@ export function AdminProducts() {
                 </select>
               </Field>
 
+              <Field label="Affiché sur">
+                <select
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                  className="input"
+                >
+                  {SHOP_REGIONS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Boutique où le produit apparaît pour les clients.
+                </p>
+              </Field>
+
               <MediaUploader form={form} setForm={setForm} />
 
               <div className="grid grid-cols-2 gap-3">
@@ -342,7 +440,7 @@ export function AdminProducts() {
                 <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" />
               </Field>
 
-              <Field label="Description compl��te">
+              <Field label="Description complète">
                 <textarea value={form.fullDescription} onChange={(e) => setForm({ ...form, fullDescription: e.target.value })} rows={3} className="input resize-none" />
               </Field>
 

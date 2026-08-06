@@ -33,6 +33,8 @@ import { NotificationsProvider } from "@/components/notifications-provider"
 import { UserDashboardModal } from "@/components/user-dashboard-modal"
 import { BlobMedia } from "@/components/blob-media"
 import { ProductReviewsModal } from "@/components/product-reviews-modal"
+import { ProductBadges } from "@/components/product-badge"
+import { resolveBadges } from "@/lib/badges"
 import { getProductRatingSummaries, type ProductRatingSummary } from "@/app/actions/ratings"
 
 type Shop = "caliboyz31" | "caliboyz94" | "calidelivery"
@@ -710,6 +712,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
                   ) : (
                     <Package style={{ width:40, height:40, opacity:0.35, color: accentColor }} />
                   )}
+                  <ProductBadges badges={resolveBadges(product.badges, product.stock)} />
                   {ratingMap[product.id]?.count ? (
                     <button
                       type="button"
@@ -805,6 +808,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
             </div>
             {productImage(selectedProduct) ? (
               <div className="product-detail-media" style={{
+                position:"relative",
                 width:"100%",
                 aspectRatio:"4 / 5",
                 maxHeight:"min(52vh, 420px)",
@@ -816,6 +820,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 alignItems:"center",
                 justifyContent:"center",
               }}>
+                <ProductBadges badges={resolveBadges(selectedProduct.badges, selectedProduct.stock)} />
                 <BlobMedia
                   src={productImage(selectedProduct)}
                   alt={selectedProduct.title}

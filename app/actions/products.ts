@@ -53,10 +53,13 @@ export async function getCategoriesWithProducts(): Promise<{ category: Category;
   }))
 }
 
+export type ProductRegion = "caliboyz31" | "caliboyz94" | "calidelivery" | "both"
+
 export type ProductInput = {
   id?: number
   title: string
   section: string
+  region?: ProductRegion | string
   image?: string | null
   media?: ProductMedia[]
   symbol?: string | null
@@ -69,6 +72,17 @@ export type ProductInput = {
   discountType?: "percent" | "fixed" | null
   discountValue?: number | null
   sortOrder?: number
+}
+
+const VALID_REGIONS = new Set(["caliboyz31", "caliboyz94", "calidelivery", "both", "31", "94", "delivery"])
+
+function normalizeRegion(raw: string | null | undefined): string {
+  const r = (raw ?? "both").trim().toLowerCase()
+  if (r === "31") return "caliboyz31"
+  if (r === "94") return "caliboyz94"
+  if (r === "delivery") return "calidelivery"
+  if (VALID_REGIONS.has(r)) return r === "both" ? "both" : r
+  return "both"
 }
 
 function sanitizeVariants(variants: ProductVariant[]): ProductVariant[] {
@@ -90,6 +104,7 @@ export async function saveProduct(input: ProductInput) {
   const values = {
     title,
     section: input.section?.trim() || "featured",
+    region: normalizeRegion(input.region),
     image: input.image?.trim() || null,
     media: Array.isArray(input.media)
       ? input.media.filter((m) => m && (m.type === "image" || m.type === "video") && m.url)
@@ -162,6 +177,20 @@ export async function deleteProduct(id: number) {
   revalidatePath("/")
   revalidatePath("/admin")
   return { ok: true as const }
+}
+
+/** Change la boutique d'affichage d'un produit (réservé admin). */
+export async function setProductRegion(id: number, region: string) {
+  if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
+  if (!id) return { ok: false as const }
+  const value = normalizeRegion(region)
+  await db.update(products).set({ region: value }).where(eq(products.id, id))
+  revalidatePath("/")
+  revalidatePath("/admin")
+  revalidatePath("/caliboyz31")
+  revalidatePath("/caliboyz94")
+  revalidatePath("/calidelivery")
+  return { ok: true as const, region: value }
 }
 
 // Ajuste le stock (réservé admin) : delta peut être négatif.
