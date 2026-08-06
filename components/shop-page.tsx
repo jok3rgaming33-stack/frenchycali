@@ -32,6 +32,8 @@ import { AppBadgeSync } from "@/components/app-badge-sync"
 import { NotificationsProvider } from "@/components/notifications-provider"
 import { UserDashboardModal } from "@/components/user-dashboard-modal"
 import { BlobMedia } from "@/components/blob-media"
+import { ProductReviewsModal } from "@/components/product-reviews-modal"
+import { getProductRatingSummaries, type ProductRatingSummary } from "@/app/actions/ratings"
 
 type Shop = "caliboyz31" | "caliboyz94" | "calidelivery"
 
@@ -89,6 +91,8 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const [plugOpen, setPlugOpen] = useState(false)
   const [favoritePlug, setFavoritePlug] = useState<PlugKey | null>(null)
   const [favoriteClearedMsg, setFavoriteClearedMsg] = useState(false)
+  const [ratingMap, setRatingMap] = useState<Record<number, ProductRatingSummary>>({})
+  const [reviewsProduct, setReviewsProduct] = useState<Product | null>(null)
 
   const userData = { token: userToken || undefined, pseudo: userPseudo || undefined }
 
@@ -207,6 +211,25 @@ export function ShopPage({ shop, initialProducts }: Props) {
   }, [])
 
   useEffect(() => { if (userToken) loadStats(userToken) }, [userToken, loadStats])
+
+  // Notes moyennes par produit (vignettes)
+  useEffect(() => {
+    if (!products.length) {
+      setRatingMap({})
+      return
+    }
+    let cancelled = false
+    getProductRatingSummaries(products.map((p) => p.id))
+      .then((map) => {
+        if (!cancelled) setRatingMap(map)
+      })
+      .catch(() => {
+        if (!cancelled) setRatingMap({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [products])
 
   // Aperçu live : rafraîchit le catalogue toutes les 6 s
   useEffect(() => {
@@ -687,6 +710,41 @@ export function ShopPage({ shop, initialProducts }: Props) {
                   ) : (
                     <Package style={{ width:40, height:40, opacity:0.35, color: accentColor }} />
                   )}
+                  {ratingMap[product.id]?.count ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setReviewsProduct(product)
+                      }}
+                      title="Voir les avis"
+                      style={{
+                        position: "absolute",
+                        left: 8,
+                        bottom: 8,
+                        zIndex: 5,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "4px 8px",
+                        borderRadius: 999,
+                        border: `1px solid ${cardBorder}`,
+                        background: isDelivery ? "rgba(10,0,18,.88)" : "rgba(15,13,7,.88)",
+                        backdropFilter: "blur(6px)",
+                        cursor: "pointer",
+                        color: accentColor,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        boxShadow: "0 4px 12px rgba(0,0,0,.45)",
+                      }}
+                    >
+                      <Star style={{ width: 12, height: 12 }} fill={accentColor} />
+                      {(ratingMap[product.id].average ?? 0).toFixed(1)}
+                      <span style={{ color: "rgba(200,190,170,.65)", fontWeight: 600 }}>
+                        ({ratingMap[product.id].count})
+                      </span>
+                    </button>
+                  ) : null}
                 </div>
                 <div style={{ padding:"14px 16px", display:"flex", flexDirection:"column", gap:8, flex:1 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
@@ -808,6 +866,18 @@ export function ShopPage({ shop, initialProducts }: Props) {
       <DeliveryInfoModal isOpen={deliveryOpen} onClose={() => setDeliveryOpen(false)} />
       <UserDashboardModal isOpen={dashOpen} onClose={() => setDashOpen(false)} userData={userData} onLogout={logout} />
       {userToken ? <NewsPopup token={userToken} /> : null}
+      {reviewsProduct && (
+        <ProductReviewsModal
+          isOpen
+          onClose={() => setReviewsProduct(null)}
+          productId={reviewsProduct.id}
+          productTitle={reviewsProduct.title}
+          accentColor={accentColor}
+          primaryColor={primaryColor}
+          cardBorder={cardBorder}
+          isDelivery={isDelivery}
+        />
+      )}
 
       {/* ══ CHANGER DE PLUG ══ */}
       {plugOpen && (

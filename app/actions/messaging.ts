@@ -8,6 +8,7 @@ import { normalizeStatus, statusMeta } from "@/lib/order-status"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { notifyCustomer, notifyVendor } from "@/lib/push"
 import { adjustStock } from "@/app/actions/products"
+import { buildRatingInviteMessage } from "@/app/actions/ratings"
 
 export type NewOrderInput = {
   customerName: string
@@ -366,6 +367,7 @@ export async function updateThreadStatus(
       case "livree": {
         const mode = current.fulfillment === "meetup" ? "en meet-up" : current.fulfillment === "locker" ? "en Locker Mondial Relay" : "en livraison"
         const points = computeLoyaltyPoints(current.total ?? 0)
+        // Message 1 : livraison + points fidélité (séparé de l'invitation à noter)
         body =
           `✨ Ta commande t'a bien été livrée (${mode}). Merci pour ta confiance !` +
           (points > 0 ? `\n${points} point${points > 1 ? "s" : ""} de fidélité viennent d'être crédités.` : "")
@@ -387,6 +389,17 @@ export async function updateThreadStatus(
         body,
         url: "/",
         tag: `status-${threadId}`,
+      })
+    }
+    // Message 2 (livrée uniquement) : invitation à noter les produits achetés
+    if (nextKey === "livree") {
+      const rateBody = buildRatingInviteMessage(threadId)
+      await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: rateBody })
+      await notifyCustomer(current.customerToken, {
+        title: `Commande #${threadId} — Note tes produits`,
+        body: "Dis-nous ce que tu as pensé de ta commande !",
+        url: "/",
+        tag: `rate-${threadId}`,
       })
     }
   }

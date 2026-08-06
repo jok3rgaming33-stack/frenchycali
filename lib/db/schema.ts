@@ -164,6 +164,15 @@ export type PromoCode = typeof promoCodes.$inferSelect
 export type LoyaltyCode = typeof loyaltyCodes.$inferSelect
 export type UserVerification = typeof userVerifications.$inferSelect
 
+// Snapshot des lignes de commande (pour notation / reporting).
+export type OrderItemSnapshot = {
+  productId: number
+  title: string
+  variant?: string
+  qty: number
+  price: number
+}
+
 export const orderThreads = pgTable("order_threads", {
   id: serial("id").primaryKey(),
   customerName: text("customer_name").notNull(),
@@ -171,6 +180,8 @@ export const orderThreads = pgTable("order_threads", {
   trackingToken: text("tracking_token").notNull().unique(), // Token de suivi unique pour chaque commande
   summary: text("summary").notNull(),
   products: text("products"),
+  // Lignes structurées (productId) — rétrocompat : peut être null sur les anciennes commandes
+  itemsJson: jsonb("items_json").$type<OrderItemSnapshot[]>().notNull().default([]),
   total: integer("total").notNull().default(0),
   fulfillment: text("fulfillment").notNull().default("livraison"),
   address: text("address"),
@@ -187,6 +198,30 @@ export const orderThreads = pgTable("order_threads", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Notes clients sur produits achetés (commande livrée uniquement).
+// average = moyenne des 4 critères (qualité, quantité, conditionnement, livraison).
+export const productRatings = pgTable(
+  "product_ratings",
+  {
+    id: serial("id").primaryKey(),
+    productId: integer("product_id").notNull(),
+    productTitle: text("product_title").notNull(),
+    threadId: integer("thread_id").notNull(),
+    userToken: text("user_token").notNull(),
+    userPseudo: text("user_pseudo"),
+    quality: integer("quality").notNull().default(0),
+    quantity: integer("quantity").notNull().default(0),
+    packaging: integer("packaging").notNull().default(0),
+    delivery: integer("delivery").notNull().default(0),
+    comment: text("comment"),
+    average: doublePrecision("average").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("product_ratings_thread_product_user_idx").on(t.threadId, t.productId, t.userToken)],
+)
+
+export type ProductRating = typeof productRatings.$inferSelect
 
 export const threadMessages = pgTable("thread_messages", {
   id: serial("id").primaryKey(),

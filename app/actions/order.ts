@@ -6,8 +6,10 @@ import { eq, desc, and, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { notifyVendor, notifyCustomer } from "@/lib/push"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
+import { computeLoyaltyPoints } from "@/lib/loyalty"
+import { buildRatingInviteMessage, ensureRatingsSchema } from "@/app/actions/ratings"
 
-export type CartItem = { title: string; variant: string; price: number; qty: number }
+export type CartItem = { productId?: number; title: string; variant: string; price: number; qty: number }
 
 export type PlaceOrderInput = {
   customerToken: string
@@ -100,6 +102,19 @@ export async function placeOrder(input: PlaceOrderInput) {
   const total = Math.max(0, subtotal - discount + deliveryFee)
   const lines = items.map((i) => `• ${i.qty}x ${i.title} (${i.variant}) — ${i.price * i.qty}€`).join("\n")
   const productsShort = items.map((i) => `${i.qty}x ${i.title}`).join(", ")
+  const itemsJson = items
+    .filter((i) => i.productId && i.productId > 0)
+    .map((i) => ({
+      productId: i.productId as number,
+      title: i.title,
+      variant: i.variant,
+      qty: i.qty,
+      price: i.price,
+    }))
+
+  try {
+    await ensureRatingsSchema()
+  } catch { /* schema best-effort */ }
 
   const modeLabel =
     fulfillment === "meetup"
@@ -130,24 +145,34 @@ export async function placeOrder(input: PlaceOrderInput) {
       ? `TRK_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
       : `ORD_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
 
-  const [thread] = await db
-    .insert(orderThreads)
-    .values({
-      customerName: customerName || "Client",
-      customerToken,
-      trackingToken,
-      summary: summary.slice(0, 4000),
-      products: productsShort,
-      total,
-      fulfillment,
-      address: address?.trim() || null,
-      lat: lat ?? null,
-      lng: lng ?? null,
-      scheduledDate: scheduledDate || null,
-      scheduledSlot: scheduledSlot || null,
-      status: "en_attente",
-    })
-    .returning()
+  const baseValues = {
+    customerName: customerName || "Client",
+    customerToken,
+    trackingToken,
+    summary: summary.slice(0, 4000),
+    products: productsShort,
+    total,
+    fulfillment,
+    address: address?.trim() || null,
+    lat: lat ?? null,
+    lng: lng ?? null,
+    scheduledDate: scheduledDate || null,
+    scheduledSlot: scheduledSlot || null,
+    status: "en_attente" as const,
+  }
+
+  let thread: typeof orderThreads.$inferSelect | undefined
+  try {
+    const [row] = await db
+      .insert(orderThreads)
+      .values({ ...baseValues, itemsJson })
+      .returning()
+    thread = row
+  } catch {
+    // Colonne items_json absente : commande sans snapshot structuré (fallback titres)
+    const [row] = await db.insert(orderThreads).values(baseValues as typeof baseValues & { itemsJson?: never }).returning()
+    thread = row
+  }
 
   if (!thread) return { ok: false as const, error: "Erreur lors de la création de la commande." }
 
@@ -280,17 +305,57 @@ export async function updateOrderStatus(threadId: number, status: string) {
   if (!(await isAdminAuthenticated())) return { ok: false as const }
   const thread = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId)).limit(1)
   if (!thread[0]) return { ok: false as const }
+
+  const prev = thread[0].status
   await db.update(orderThreads).set({ status, updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
+
+  const becameDelivered =
+    prev !== status &&
+    (status === "livree" || status === "locker_livre") &&
+    prev !== "livree" &&
+    prev !== "locker_livre"
+
   if (thread[0].customerToken) {
-    const label = status.replace(/_/g, " ")
-    await notifyCustomer(thread[0].customerToken, {
-      title: "Commande mise à jour",
-      body: `Statut : ${label}`,
-      url: `/suivi?token=${thread[0].trackingToken}`,
-      tag: "order-status",
-    })
+    if (becameDelivered) {
+      const mode =
+        thread[0].fulfillment === "meetup"
+          ? "en meet-up"
+          : thread[0].fulfillment === "locker"
+            ? "en Locker Mondial Relay"
+            : "en livraison"
+      const points = computeLoyaltyPoints(thread[0].total ?? 0)
+      // Message 1 : livraison + points (séparé de la notation)
+      const body1 =
+        `✨ Ta commande t'a bien été livrée (${mode}). Merci pour ta confiance !` +
+        (points > 0 ? `\n${points} point${points > 1 ? "s" : ""} de fidélité viennent d'être crédités.` : "")
+      await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body1 })
+      // Message 2 : invitation à noter
+      const body2 = buildRatingInviteMessage(threadId)
+      await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body2 })
+      await notifyCustomer(thread[0].customerToken, {
+        title: "Commande livrée",
+        body: body1.slice(0, 120),
+        url: "/",
+        tag: `status-${threadId}`,
+      })
+      await notifyCustomer(thread[0].customerToken, {
+        title: "Note tes produits",
+        body: "Dis-nous ce que tu as pensé de ta commande !",
+        url: "/",
+        tag: `rate-${threadId}`,
+      })
+    } else {
+      const label = status.replace(/_/g, " ")
+      await notifyCustomer(thread[0].customerToken, {
+        title: "Commande mise à jour",
+        body: `Statut : ${label}`,
+        url: `/suivi?token=${thread[0].trackingToken}`,
+        tag: "order-status",
+      })
+    }
   }
   revalidatePath("/admin")
+  revalidatePath("/messagerie")
   return { ok: true as const }
 }
 

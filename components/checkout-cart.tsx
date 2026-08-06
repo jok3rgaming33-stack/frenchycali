@@ -274,7 +274,13 @@ export function CheckoutCart({
       const res = await placeOrder({
         customerToken,
         customerName,
-        items: cart.map((i) => ({ title: i.title, variant: i.variant, price: i.price, qty: i.qty })),
+        items: cart.map((i) => ({
+          productId: i.productId,
+          title: i.title,
+          variant: i.variant,
+          price: i.price,
+          qty: i.qty,
+        })),
         fulfillment,
         address: isMeetup
           ? undefined
