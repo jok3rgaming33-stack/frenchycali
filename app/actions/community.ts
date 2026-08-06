@@ -18,6 +18,7 @@ export type CommunityMessageDTO = {
   pseudo: string
   favoriteShop: string | null
   favoriteLabel: string | null
+  isAdminAuthor: boolean
   body: string
   media: CommunityMedia[]
   createdAt: Date | string
@@ -33,11 +34,16 @@ async function ensureCommunitySchema() {
         user_token TEXT NOT NULL,
         pseudo TEXT NOT NULL,
         favorite_shop TEXT,
+        is_admin BOOLEAN NOT NULL DEFAULT FALSE,
         body TEXT NOT NULL DEFAULT '',
         media JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         deleted_at TIMESTAMPTZ
       )
+    `)
+    await db.execute(sql`
+      ALTER TABLE community_messages
+      ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE
     `)
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS community_messages_created_at_idx
@@ -49,6 +55,35 @@ async function ensureCommunitySchema() {
     `)
   } catch (e) {
     console.error("[community] ensure schema:", e)
+  }
+}
+
+function toDTO(
+  r: {
+    id: number
+    userToken: string
+    pseudo: string
+    favoriteShop: string | null
+    isAdmin?: boolean | null
+    body: string | null
+    media: CommunityMedia[] | null
+    createdAt: Date
+  },
+  viewerToken: string,
+  canModerate: boolean,
+): CommunityMessageDTO {
+  const isAdminAuthor = Boolean(r.isAdmin) || r.pseudo === "Admin"
+  return {
+    id: r.id,
+    pseudo: isAdminAuthor ? "Admin" : r.pseudo,
+    favoriteShop: isAdminAuthor ? null : r.favoriteShop,
+    favoriteLabel: isAdminAuthor ? null : favoriteShopLabel(r.favoriteShop),
+    isAdminAuthor,
+    body: r.body ?? "",
+    media: Array.isArray(r.media) ? r.media : [],
+    createdAt: r.createdAt,
+    isMine: r.userToken === viewerToken,
+    canModerate,
   }
 }
 
@@ -108,17 +143,7 @@ export async function listCommunityMessages(
     }
 
     const token = userToken.trim()
-    const messages: CommunityMessageDTO[] = rows.map((r) => ({
-      id: r.id,
-      pseudo: r.pseudo,
-      favoriteShop: r.favoriteShop,
-      favoriteLabel: favoriteShopLabel(r.favoriteShop),
-      body: r.body ?? "",
-      media: Array.isArray(r.media) ? r.media : [],
-      createdAt: r.createdAt,
-      isMine: r.userToken === token,
-      canModerate,
-    }))
+    const messages: CommunityMessageDTO[] = rows.map((r) => toDTO(r, token, canModerate))
 
     return { ok: true, messages, canModerate }
   } catch (e) {
@@ -141,15 +166,20 @@ export async function postCommunityMessage(input: {
   const body = (input.body ?? "").trim()
   const media = sanitizeMedia(input.media)
 
-  // Compte + ban
+  const asAdmin =
+    (await isAdminToken(token)) || (await isAdminAuthenticated())
+
+  // Compte client (optionnel si admin pur)
   const [account] = await db.select().from(users).where(eq(users.token, token)).limit(1)
-  if (!account) return { ok: false, error: "Compte introuvable." }
-  const flags = Array.isArray(account.flags) ? account.flags : []
-  if (flags.includes("banni")) {
-    return { ok: false, error: "Ton compte est suspendu. Canal inaccessible." }
+  if (!asAdmin) {
+    if (!account) return { ok: false, error: "Compte introuvable." }
+    const flags = Array.isArray(account.flags) ? account.flags : []
+    if (flags.includes("banni")) {
+      return { ok: false, error: "Ton compte est suspendu. Canal inaccessible." }
+    }
   }
 
-  // Historique récent pour anti-spam
+  // Historique récent pour anti-spam (admin : limites plus souples mais toujours filtrées)
   const since = new Date(Date.now() - 120_000)
   const recent = await db
     .select({
@@ -167,16 +197,26 @@ export async function postCommunityMessage(input: {
     .orderBy(desc(communityMessages.createdAt))
     .limit(20)
 
-  const check = validateCommunityPost({
-    body,
-    mediaCount: media.length,
-    recentBodies: recent.map((r) => normalizeForFilter(r.body ?? "")),
-    recentTimestamps: recent.map((r) => new Date(r.createdAt).getTime()),
-  })
-  if (!check.ok) return { ok: false, error: check.error }
+  if (!asAdmin) {
+    const check = validateCommunityPost({
+      body,
+      mediaCount: media.length,
+      recentBodies: recent.map((r) => normalizeForFilter(r.body ?? "")),
+      recentTimestamps: recent.map((r) => new Date(r.createdAt).getTime()),
+    })
+    if (!check.ok) return { ok: false, error: check.error }
+  } else {
+    // Admin : pas d'anti-spam strict, mais longueur + contenu de base
+    if (!body && media.length === 0) {
+      return { ok: false, error: "Écris un message ou ajoute un média." }
+    }
+    if (body.length > COMMUNITY_LIMITS.MAX_BODY) {
+      return { ok: false, error: `Message trop long (max ${COMMUNITY_LIMITS.MAX_BODY} caractères).` }
+    }
+  }
 
-  const favoriteShop = normalizeFavorite(input.favoriteShop)
-  const pseudo = account.pseudo || "Client"
+  const favoriteShop = asAdmin ? null : normalizeFavorite(input.favoriteShop)
+  const pseudo = asAdmin ? "Admin" : account?.pseudo || "Client"
 
   try {
     const [row] = await db
@@ -185,6 +225,7 @@ export async function postCommunityMessage(input: {
         userToken: token,
         pseudo,
         favoriteShop,
+        isAdmin: asAdmin,
         body,
         media,
       })
@@ -192,22 +233,9 @@ export async function postCommunityMessage(input: {
 
     if (!row) return { ok: false, error: "Échec de l'envoi." }
 
-    const canModerate =
-      (await isAdminAuthenticated()) || (await isAdminToken(token))
-
     return {
       ok: true,
-      message: {
-        id: row.id,
-        pseudo: row.pseudo,
-        favoriteShop: row.favoriteShop,
-        favoriteLabel: favoriteShopLabel(row.favoriteShop),
-        body: row.body ?? "",
-        media: Array.isArray(row.media) ? row.media : [],
-        createdAt: row.createdAt,
-        isMine: true,
-        canModerate,
-      },
+      message: toDTO(row, token, asAdmin),
     }
   } catch (e) {
     console.error("[community] post:", e)

@@ -302,20 +302,70 @@ export function CommunityChatModal({
               Aucun message pour l&apos;instant. Lance la discussion !
             </p>
           )}
-          {messages.map((m) => (
+          {messages.map((m) => {
+            // Admin : couronne + or royal (gold) ou or+violet selon thème
+            const adminNameColor = isDelivery ? "#e9d5ff" : "#ffe566"
+            const adminGlow = isDelivery
+              ? "0 0 14px rgba(167,139,250,.45)"
+              : "0 0 14px rgba(255,202,40,.4)"
+            const bubbleBorder = m.isAdminAuthor
+              ? isDelivery
+                ? "rgba(196,181,253,.55)"
+                : "rgba(255,214,80,.55)"
+              : m.isMine
+                ? `${accentColor}44`
+                : cardBorder
+            const bubbleBg = m.isAdminAuthor
+              ? isDelivery
+                ? "linear-gradient(135deg, rgba(139,0,255,.22), rgba(255,202,40,.1))"
+                : "linear-gradient(135deg, rgba(255,202,40,.18), rgba(230,81,0,.12))"
+              : m.isMine
+                ? `${accentColor}14`
+                : "rgba(255,255,255,.03)"
+
+            return (
             <article
               key={m.id}
               className={`rounded-2xl border px-3 py-2.5 ${m.isMine ? "ml-6" : "mr-4"}`}
               style={{
-                borderColor: m.isMine ? `${accentColor}44` : cardBorder,
-                background: m.isMine ? `${accentColor}14` : "rgba(255,255,255,.03)",
+                borderColor: bubbleBorder,
+                background: bubbleBg,
+                boxShadow: m.isAdminAuthor ? adminGlow : undefined,
               }}
             >
               <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="text-xs font-bold" style={{ color: accentColor }}>
-                  {m.pseudo}
+                <span
+                  className="text-xs font-bold"
+                  style={{
+                    color: m.isAdminAuthor ? adminNameColor : accentColor,
+                    textShadow: m.isAdminAuthor ? adminGlow : undefined,
+                    fontFamily: m.isAdminAuthor ? "Orbitron,sans-serif" : undefined,
+                    letterSpacing: m.isAdminAuthor ? "0.06em" : undefined,
+                  }}
+                >
+                  {m.isAdminAuthor ? (
+                    <>
+                      <span aria-hidden="true">👑</span> Admin
+                    </>
+                  ) : (
+                    m.pseudo
+                  )}
                 </span>
-                {m.favoriteLabel && (
+                {m.isAdminAuthor && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                    style={{
+                      background: isDelivery
+                        ? "linear-gradient(90deg, rgba(139,0,255,.35), rgba(255,202,40,.25))"
+                        : "linear-gradient(90deg, rgba(255,202,40,.35), rgba(230,81,0,.3))",
+                      color: adminNameColor,
+                      border: `1px solid ${bubbleBorder}`,
+                    }}
+                  >
+                    Équipe
+                  </span>
+                )}
+                {!m.isAdminAuthor && m.favoriteLabel && (
                   <span
                     className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
                     style={{
@@ -370,7 +420,8 @@ export function CommunityChatModal({
                 </div>
               )}
             </article>
-          ))}
+            )
+          })}
           <div ref={bottomRef} />
         </div>
 

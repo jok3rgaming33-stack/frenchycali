@@ -443,6 +443,8 @@ export const communityMessages = pgTable("community_messages", {
   userToken: text("user_token").notNull(),
   pseudo: text("pseudo").notNull(),
   favoriteShop: text("favorite_shop"),
+  // true = message publié par un admin → affiché "Admin" + couronne
+  isAdmin: boolean("is_admin").notNull().default(false),
   body: text("body").notNull().default(""),
   media: jsonb("media").$type<CommunityMedia[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
