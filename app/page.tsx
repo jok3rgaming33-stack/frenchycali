@@ -1,11 +1,26 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+
+const FAVORITE_KEY = "favoriteUniverse"
+const VALID_FAVORITES = ["caliboyz31", "caliboyz94", "calidelivery"] as const
 
 export default function SplashPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
+  const [redirecting, setRedirecting] = useState(false)
+
+  // Redirection immédiate vers l'univers favori s'il est défini
+  useEffect(() => {
+    try {
+      const fav = localStorage.getItem(FAVORITE_KEY)
+      if (fav && (VALID_FAVORITES as readonly string[]).includes(fav)) {
+        setRedirecting(true)
+        router.replace(`/${fav}`)
+      }
+    } catch { /* ignore */ }
+  }, [router])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -44,6 +59,7 @@ export default function SplashPage() {
 
   // Typewriter effect
   useEffect(() => {
+    if (redirecting) return
     const words = ["FRENCHYCALI", "ACCÈS SÉCURISÉ", "BIENVENUE"]
     let wordIdx = 0; let charIdx = 0; let deleting = false
     const el = document.getElementById("typewriter")
@@ -61,7 +77,19 @@ export default function SplashPage() {
     }
     const t = setTimeout(tick, 400)
     return () => clearTimeout(t)
-  }, [])
+  }, [redirecting])
+
+  if (redirecting) {
+    return (
+      <main style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
+        background:"radial-gradient(circle at top right,rgba(255,202,40,.09),transparent 60%),radial-gradient(circle at bottom left,rgba(230,81,0,.07),transparent 60%),#0f0d07" }}>
+        <p style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:13, letterSpacing:"0.2em", textTransform:"uppercase",
+          background:"linear-gradient(90deg,#ffca28,#e65100)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
+          Redirection vers ton favori…
+        </p>
+      </main>
+    )
+  }
 
   return (
     <main style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:40, textAlign:"center", position:"relative", overflow:"hidden",
