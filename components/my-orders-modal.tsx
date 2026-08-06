@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/messaging"
 import { statusMeta, isClosedStatus } from "@/lib/order-status"
 import { MessageBody } from "@/components/message-body"
+import { RateProductsModal } from "@/components/rate-products-modal"
 import { BlobMedia } from "@/components/blob-media"
 import {
   formatMessageTime,
@@ -97,6 +98,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
+  const [rateThreadId, setRateThreadId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Notification push
   const [pushSupported, setPushSupported] = useState(false)
@@ -521,7 +523,10 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
                           {isClient ? "Vous" : "Le Chimiste"} · {formatMessageTime(m.createdAt)}
                         </div>
-                        <MessageBody body={m.body} />
+                        <MessageBody
+                          body={m.body}
+                          onRate={token ? (id) => setRateThreadId(id) : undefined}
+                        />
                       </div>
                     )
                   })}
@@ -635,6 +640,15 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
           </>
         )}
       </div>
+
+      {rateThreadId != null && token && (
+        <RateProductsModal
+          isOpen
+          onClose={() => setRateThreadId(null)}
+          threadId={rateThreadId}
+          userToken={token}
+        />
+      )}
     </div>
   )
 }

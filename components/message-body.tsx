@@ -1,7 +1,8 @@
 "use client"
 
-import { Mic } from "lucide-react"
+import { Mic, Star } from "lucide-react"
 import { BlobImg, BlobVideo, BlobAudio, isVideoUrl } from "@/components/blob-media"
+import { extractRateThreadId, stripRateTag } from "@/lib/order-items"
 
 /**
  * Parse le corps d'un message et retourne un tableau de segments :
@@ -53,11 +54,20 @@ export function parseMessageBody(body: string): Segment[] {
   return segments
 }
 
+type MessageBodyProps = {
+  body: string
+  /** Si fourni et que le message contient [rate:ID], affiche le bouton Noter */
+  onRate?: (threadId: number) => void
+}
+
 /**
- * Rendu d'un corps de message (texte + image / vidéo / vocal).
+ * Rendu d'un corps de message (texte + image / vidéo / vocal + bouton noter).
+ * Le tag [rate:N] n'est jamais affiché en brut.
  */
-export function MessageBody({ body }: { body: string }) {
-  const segments = parseMessageBody(body)
+export function MessageBody({ body, onRate }: MessageBodyProps) {
+  const rateId = extractRateThreadId(body)
+  const cleanBody = rateId != null ? stripRateTag(body) : body
+  const segments = parseMessageBody(cleanBody)
 
   return (
     <div className="flex flex-col gap-2">
@@ -120,6 +130,17 @@ export function MessageBody({ body }: { body: string }) {
 
         return null
       })}
+
+      {rateId != null && onRate && (
+        <button
+          type="button"
+          onClick={() => onRate(rateId)}
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-accent-foreground transition-opacity hover:opacity-90"
+        >
+          <Star className="h-4 w-4" aria-hidden="true" />
+          Noter
+        </button>
+      )}
     </div>
   )
 }

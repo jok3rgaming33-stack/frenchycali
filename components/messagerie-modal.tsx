@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { X, ArrowLeft, MessageSquare, Send, Loader2, FlaskConical, Package, Paperclip, Star } from "lucide-react"
+import { X, ArrowLeft, MessageSquare, Send, Loader2, FlaskConical, Package, Paperclip } from "lucide-react"
 import { VoiceNoteButton } from "@/components/voice-note-button"
 import {
   getThreadsForToken,
@@ -13,7 +13,6 @@ import {
 import { statusMeta, isDiscussionStatus } from "@/lib/order-status"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
-import { extractRateThreadId, stripRateTag } from "@/lib/order-items"
 import {
   formatMessageTime,
   formatThreadActivity,
@@ -462,8 +461,6 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                 <div className="flex flex-col gap-3">
                   {messages.map((m) => {
                     const isClient = m.sender === "client"
-                    const rateId = !isClient ? extractRateThreadId(m.body) : null
-                    const displayBody = rateId != null ? stripRateTag(m.body) : m.body
                     return (
                       <div
                         key={m.id}
@@ -476,17 +473,10 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
                           {isClient ? "Vous" : "Le chimiste"} · {formatMessageTime(m.createdAt)}
                         </div>
-                        {displayBody ? <MessageBody body={displayBody} /> : null}
-                        {rateId != null && token && (
-                          <button
-                            type="button"
-                            onClick={() => setRateThreadId(rateId)}
-                            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-accent-foreground transition-opacity hover:opacity-90"
-                          >
-                            <Star className="h-4 w-4" aria-hidden="true" />
-                            Noter
-                          </button>
-                        )}
+                        <MessageBody
+                          body={m.body}
+                          onRate={!isClient && token ? (id) => setRateThreadId(id) : undefined}
+                        />
                       </div>
                     )
                   })}
