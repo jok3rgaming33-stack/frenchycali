@@ -11,35 +11,24 @@ import {
   saveProduct,
   deleteProduct,
   adjustStock,
-  setProductRegion,
+  setProductRegions,
   reorderProducts,
   deleteProductMedia,
   type ProductInput,
 } from "@/app/actions/products"
-
-const SHOP_REGIONS = [
-  { value: "caliboyz31", label: "Cali Boyz 31" },
-  { value: "caliboyz94", label: "Cali Boyz 94" },
-  { value: "calidelivery", label: "CaliDelivery" },
-  { value: "both", label: "Toutes les pages" },
-] as const
-
-function normalizeShopRegion(raw: string | null | undefined): string {
-  const r = (raw ?? "both").toLowerCase()
-  if (r === "31") return "caliboyz31"
-  if (r === "94") return "caliboyz94"
-  if (r === "delivery") return "calidelivery"
-  if (SHOP_REGIONS.some((o) => o.value === r)) return r
-  return "both"
-}
 import { listCategories, createCategory, renameCategory, deleteCategory, reorderCategories } from "@/app/actions/categories"
 import type { Product, ProductVariant, ProductMedia, Category } from "@/lib/db/schema"
+import {
+  SHOP_REGION_OPTIONS,
+  parseProductRegions,
+  type ShopRegionKey,
+} from "@/lib/product-regions"
 
 type FormState = {
   id?: number
   title: string
   section: string
-  region: string
+  regions: ShopRegionKey[]
   image: string
   media: ProductMedia[]
   symbol: string
@@ -57,7 +46,7 @@ function emptyForm(section: string): FormState {
   return {
     title: "",
     section,
-    region: "both",
+    regions: ["caliboyz31", "caliboyz94", "calidelivery"],
     image: "",
     media: [],
     symbol: "",
@@ -77,7 +66,7 @@ function toForm(p: Product): FormState {
     id: p.id,
     title: p.title,
     section: p.section,
-    region: normalizeShopRegion(p.region),
+    regions: parseProductRegions(p.region),
     image: p.image ?? "",
     media: p.media ?? [],
     symbol: p.symbol ?? "",
@@ -90,6 +79,53 @@ function toForm(p: Product): FormState {
     discountType: (p.discountType as "percent" | "fixed" | null) ?? "",
     discountValue: p.discountValue ?? 0,
   }
+}
+
+/** Cases à cocher multi-boutiques (carte + formulaire). */
+function RegionMultiSelect({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: ShopRegionKey[]
+  onChange: (next: ShopRegionKey[]) => void
+  compact?: boolean
+}) {
+  const toggle = (key: ShopRegionKey) => {
+    if (value.includes(key)) {
+      // Au moins une page doit rester sélectionnée
+      if (value.length <= 1) return
+      onChange(value.filter((k) => k !== key))
+    } else {
+      onChange([...value, key])
+    }
+  }
+
+  return (
+    <div className={compact ? "flex flex-col gap-1" : "flex flex-wrap gap-2"}>
+      {SHOP_REGION_OPTIONS.map((opt) => {
+        const active = value.includes(opt.value)
+        return (
+          <label
+            key={opt.value}
+            className={`flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-all ${
+              active
+                ? "border-accent/50 bg-accent/15 text-accent"
+                : "border-border bg-background/50 text-muted-foreground hover:border-accent/30"
+            } ${compact ? "w-full" : ""}`}
+          >
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={() => toggle(opt.value)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent,#ffca28)]"
+            />
+            {opt.label}
+          </label>
+        )
+      })}
+    </div>
+  )
 }
 
 export function AdminProducts() {
@@ -125,7 +161,7 @@ export function AdminProducts() {
       id: form.id,
       title: form.title,
       section: form.section,
-      region: form.region,
+      region: form.regions,
       image: form.image,
       media: form.media,
       symbol: form.symbol,
@@ -158,8 +194,8 @@ export function AdminProducts() {
     mutate()
   }
 
-  const quickRegion = async (id: number, region: string) => {
-    await setProductRegion(id, region)
+  const quickRegions = async (id: number, regions: ShopRegionKey[]) => {
+    await setProductRegions(id, regions)
     mutate()
   }
 
@@ -297,23 +333,15 @@ export function AdminProducts() {
                         </div>
                       )}
 
-                      <div className="mt-3">
-                        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Affiché sur
+                      <div className="mt-3" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Affiché sur (multi)
                         </label>
-                        <select
-                          value={normalizeShopRegion(p.region)}
-                          onChange={(e) => quickRegion(p.id, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="input w-full py-1.5 text-xs"
-                          aria-label={`Boutique d'affichage pour ${p.title}`}
-                        >
-                          {SHOP_REGIONS.map((r) => (
-                            <option key={r.value} value={r.value}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
+                        <RegionMultiSelect
+                          compact
+                          value={parseProductRegions(p.region)}
+                          onChange={(next) => quickRegions(p.id, next)}
+                        />
                       </div>
 
                       <div className="mt-3 flex items-center justify-between rounded-xl bg-background/60 p-2">
@@ -408,20 +436,13 @@ export function AdminProducts() {
                 </select>
               </Field>
 
-              <Field label="Affiché sur">
-                <select
-                  value={form.region}
-                  onChange={(e) => setForm({ ...form, region: e.target.value })}
-                  className="input"
-                >
-                  {SHOP_REGIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Boutique où le produit apparaît pour les clients.
+              <Field label="Affiché sur (plusieurs pages possibles)">
+                <RegionMultiSelect
+                  value={form.regions}
+                  onChange={(next) => setForm({ ...form, regions: next })}
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Coche les pages où le produit doit apparaître. Tu peux en combiner plusieurs.
                 </p>
               </Field>
 

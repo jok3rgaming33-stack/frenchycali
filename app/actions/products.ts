@@ -7,29 +7,22 @@ import { notifyRestock } from "@/app/actions/restock"
 import { revalidatePath } from "next/cache"
 import { asc, eq, sql } from "drizzle-orm"
 import { del } from "@vercel/blob"
+import {
+  productVisibleOnShop,
+  serializeProductRegions,
+  parseProductRegions,
+} from "@/lib/product-regions"
 
 // Liste tous les produits (admin) triés par section puis ordre.
 export async function listProducts(): Promise<Product[]> {
   return db.select().from(products).orderBy(asc(products.section), asc(products.sortOrder), asc(products.id))
 }
 
-/** Alias FrenchyCali — filtre optionnel par région boutique (31 / 94 / delivery / shop keys) */
+/** Alias FrenchyCali — filtre optionnel par boutique (multi-régions supporté). */
 export async function getProducts(region?: string): Promise<Product[]> {
   const all = await listProducts()
   if (!region) return all
-  const key = region.toLowerCase()
-  const aliases =
-    key === "caliboyz31" || key === "31"
-      ? new Set(["31", "both", "caliboyz31"])
-      : key === "caliboyz94" || key === "94"
-        ? new Set(["94", "both", "caliboyz94"])
-        : key === "calidelivery" || key === "delivery"
-          ? new Set(["delivery", "both", "calidelivery"])
-          : new Set([key, "both"])
-  return all.filter((p) => {
-    const r = ((p as Product & { region?: string }).region ?? "both").toLowerCase()
-    return aliases.has(r)
-  })
+  return all.filter((p) => productVisibleOnShop(p.region, region))
 }
 
 // Produits d'une section (clé de catégorie) donnée, pour la boutique client.
@@ -53,13 +46,12 @@ export async function getCategoriesWithProducts(): Promise<{ category: Category;
   }))
 }
 
-export type ProductRegion = "caliboyz31" | "caliboyz94" | "calidelivery" | "both"
-
 export type ProductInput = {
   id?: number
   title: string
   section: string
-  region?: ProductRegion | string
+  /** Une ou plusieurs boutiques (multi). "both" / liste complète = toutes. */
+  region?: string | string[]
   image?: string | null
   media?: ProductMedia[]
   symbol?: string | null
@@ -74,15 +66,12 @@ export type ProductInput = {
   sortOrder?: number
 }
 
-const VALID_REGIONS = new Set(["caliboyz31", "caliboyz94", "calidelivery", "both", "31", "94", "delivery"])
-
-function normalizeRegion(raw: string | null | undefined): string {
-  const r = (raw ?? "both").trim().toLowerCase()
-  if (r === "31") return "caliboyz31"
-  if (r === "94") return "caliboyz94"
-  if (r === "delivery") return "calidelivery"
-  if (VALID_REGIONS.has(r)) return r === "both" ? "both" : r
-  return "both"
+function regionToStore(input: string | string[] | null | undefined): string {
+  if (Array.isArray(input)) return serializeProductRegions(input)
+  if (typeof input === "string" && input.includes(",")) {
+    return serializeProductRegions(input.split(","))
+  }
+  return serializeProductRegions(input ? [input] : [])
 }
 
 function sanitizeVariants(variants: ProductVariant[]): ProductVariant[] {
@@ -104,7 +93,7 @@ export async function saveProduct(input: ProductInput) {
   const values = {
     title,
     section: input.section?.trim() || "featured",
-    region: normalizeRegion(input.region),
+    region: regionToStore(input.region),
     image: input.image?.trim() || null,
     media: Array.isArray(input.media)
       ? input.media.filter((m) => m && (m.type === "image" || m.type === "video") && m.url)
@@ -179,18 +168,23 @@ export async function deleteProduct(id: number) {
   return { ok: true as const }
 }
 
-/** Change la boutique d'affichage d'un produit (réservé admin). */
-export async function setProductRegion(id: number, region: string) {
+/** Change la/les boutique(s) d'affichage d'un produit (réservé admin, multi possible). */
+export async function setProductRegions(id: number, regions: string[]) {
   if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
   if (!id) return { ok: false as const }
-  const value = normalizeRegion(region)
+  const value = serializeProductRegions(regions)
   await db.update(products).set({ region: value }).where(eq(products.id, id))
   revalidatePath("/")
   revalidatePath("/admin")
   revalidatePath("/caliboyz31")
   revalidatePath("/caliboyz94")
   revalidatePath("/calidelivery")
-  return { ok: true as const, region: value }
+  return { ok: true as const, region: value, regions: parseProductRegions(value) }
+}
+
+/** @deprecated préférer setProductRegions */
+export async function setProductRegion(id: number, region: string) {
+  return setProductRegions(id, region === "both" ? ["caliboyz31", "caliboyz94", "calidelivery"] : [region])
 }
 
 // Ajuste le stock (réservé admin) : delta peut être négatif.
