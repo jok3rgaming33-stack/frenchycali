@@ -100,6 +100,38 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
                 <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(200,190,170,.7)" }}>{selected.summary}</p>
                 <p style={{ margin: "3px 0 0", fontSize: 11, color: ACCENT, fontWeight: 700 }}>{selected.total}€ · {selected.fulfillment} · #{selected.trackingToken.slice(0, 12)}</p>
                 {selected.address && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(200,190,170,.6)" }}>📍 {selected.address}</p>}
+                {(selected.paymentStatus || selected.paymentProvider) && (
+                  <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(200,190,170,.85)" }}>
+                    💳 Paiement :{" "}
+                    <strong style={{
+                      color:
+                        selected.paymentStatus === "confirmed" || selected.paymentStatus === "finished"
+                          ? "#4ade80"
+                          : selected.paymentStatus === "failed" || selected.paymentStatus === "expired"
+                            ? "#f87171"
+                            : "#7dd3fc",
+                    }}>
+                      {selected.paymentStatus === "confirmed" || selected.paymentStatus === "finished"
+                        ? "Payé"
+                        : selected.paymentStatus === "failed"
+                          ? "Échoué"
+                          : selected.paymentStatus === "expired"
+                            ? "Expiré"
+                            : selected.paymentStatus === "partial" || selected.paymentStatus === "partially_paid"
+                              ? "Partiel"
+                              : "En attente"}
+                    </strong>
+                    {selected.paymentCrypto ? ` · ${String(selected.paymentCrypto).toUpperCase()}` : ""}
+                    {selected.paymentPayUrl && selected.paymentStatus !== "confirmed" && selected.paymentStatus !== "finished" ? (
+                      <>
+                        {" · "}
+                        <a href={selected.paymentPayUrl} target="_blank" rel="noopener noreferrer" style={{ color: ACCENT }}>
+                          Lien paiement
+                        </a>
+                      </>
+                    ) : null}
+                  </p>
+                )}
               </div>
               <select value={selected.status} onChange={(e) => handleStatus(selected.id, e.target.value)} disabled={statusLoading}
                 style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer" }}>

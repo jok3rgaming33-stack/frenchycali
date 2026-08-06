@@ -5,7 +5,8 @@ import type { OrderThread } from "@/lib/db/schema"
 import { deleteOrderThread, getThread } from "@/app/actions/messaging"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { statusMeta } from "@/lib/order-status"
-import { ListOrdered, Truck, Store, Package, Copy, Check, Search, Coins, Trash2, Loader2, AlertTriangle, Eye, X, Calendar } from "lucide-react"
+import { ListOrdered, Truck, Store, Package, Copy, Check, Search, Coins, Trash2, Loader2, AlertTriangle, Eye, X, Calendar, Wallet, ExternalLink } from "lucide-react"
+import { paymentStatusMeta, formatPaymentCrypto } from "@/lib/payment-status"
 
 type ThreadMessage = { id: number; sender: string; body: string; createdAt: Date | string }
 type ThreadDetail = { messages: ThreadMessage[] } & OrderThread
@@ -113,7 +114,9 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
       (t) =>
         t.customerName.toLowerCase().includes(q) ||
         (t.customerToken ?? "").toLowerCase().includes(q) ||
-        (t.products ?? "").toLowerCase().includes(q),
+        (t.products ?? "").toLowerCase().includes(q) ||
+        (t.paymentStatus ?? "").toLowerCase().includes(q) ||
+        (t.paymentCrypto ?? "").toLowerCase().includes(q),
     )
   }, [periodFiltered, query])
 
@@ -200,13 +203,14 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
       {/* Tableau */}
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
+          <table className="w-full min-w-[880px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border bg-background/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Pseudo</th>
                 <th className="px-4 py-3 font-medium">Token</th>
                 <th className="px-4 py-3 font-medium">Produits</th>
                 <th className="px-4 py-3 font-medium">Montant</th>
+                <th className="px-4 py-3 font-medium">Paiement</th>
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Points crédités</th>
                 <th className="px-4 py-3 text-right font-medium">Action</th>
@@ -215,13 +219,15 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
                     Aucune commande à afficher.
                   </td>
                 </tr>
               ) : (
                 filtered.map((t) => {
                   const meta = statusMeta(t.status)
+                  const pay = paymentStatusMeta(t.paymentStatus)
+                  const crypto = formatPaymentCrypto(t.paymentCrypto)
                   return (
                     <tr key={t.id} className="border-b border-border/60 last:border-0 hover:bg-secondary/40">
                       <td className="px-4 py-3">
@@ -248,6 +254,31 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
                         </div>
                       </td>
                       <td className="px-4 py-3 font-semibold">{t.total}€</td>
+                      <td className="px-4 py-3">
+                        {t.paymentProvider || t.paymentStatus ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pay.badge}`}>
+                              <Wallet className="h-3 w-3" aria-hidden="true" />
+                              {pay.label}
+                            </span>
+                            {crypto && (
+                              <span className="font-mono text-[10px] text-muted-foreground">{crypto}</span>
+                            )}
+                            {t.paymentPayUrl && pay.key !== "confirmed" && (
+                              <a
+                                href={t.paymentPayUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[10px] text-accent hover:underline"
+                              >
+                                Lien <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground" title="Dernier message / activité">
                         {formatDate(t.updatedAt ?? t.createdAt)}
                       </td>
@@ -329,6 +360,37 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
                 {statusMeta(detailThread.status).label}
               </span>
             </div>
+            {/* Paiement crypto */}
+            {(detailThread.paymentProvider || detailThread.paymentStatus) && (
+              <div className="border-b border-border bg-background/40 px-4 py-3 text-xs">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <Wallet className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                  <span className="font-semibold">Paiement crypto</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${paymentStatusMeta(detailThread.paymentStatus).badge}`}>
+                    {paymentStatusMeta(detailThread.paymentStatus).label}
+                  </span>
+                  {formatPaymentCrypto(detailThread.paymentCrypto) && (
+                    <span className="font-mono text-muted-foreground">
+                      {formatPaymentCrypto(detailThread.paymentCrypto)}
+                      {detailThread.paymentAmountCrypto ? ` · ${detailThread.paymentAmountCrypto}` : ""}
+                    </span>
+                  )}
+                </div>
+                {detailThread.paymentProvider && (
+                  <p className="text-muted-foreground">Provider : {detailThread.paymentProvider}</p>
+                )}
+                {detailThread.paymentPayUrl && (
+                  <a
+                    href={detailThread.paymentPayUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-accent hover:underline"
+                  >
+                    Ouvrir le lien de paiement <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            )}
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4">
               {detailThread.messages.length === 0 ? (
