@@ -18,6 +18,7 @@ import { AdminProducts } from "@/components/admin-products"
 import { AdminPromos } from "@/components/admin-promos"
 import { AdminLogistics } from "@/components/admin-logistics"
 import { AdminCartSettings } from "@/components/admin-cart-settings"
+import { AdminCryptoSettings } from "@/components/admin-crypto-settings"
 import { AdminLoginLogs } from "@/components/admin-login-logs"
 import type { LoginLogRow } from "@/app/actions/login-logs"
 import { AdminNotifications } from "@/components/admin-notifications"
@@ -25,7 +26,7 @@ import type { BroadcastNotificationRow } from "@/app/actions/notifications"
 import { adminLogout, startAdminClientPreview } from "@/app/actions/admin-auth"
 import { getAdminBadgeCounts } from "@/app/actions/messaging"
 import { AdminAppBadgeSync } from "@/components/app-badge-sync"
-import { MessageSquare, Map, ListOrdered, Users, LogOut, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound, ChevronDown } from "lucide-react"
+import { MessageSquare, Map, ListOrdered, Users, LogOut, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound, ChevronDown, Wallet } from "lucide-react"
 import { PushToggle } from "@/components/push-toggle"
 
 const CLIENT_SHOPS = [
@@ -34,7 +35,7 @@ const CLIENT_SHOPS = [
   { href: "/calidelivery?preview=1", label: "CaliDelivery", hint: "Interface néon delivery" },
 ] as const
 
-type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "carte" | "commandes" | "utilisateurs" | "verifications" | "recuperations" | "produits" | "promos" | "logistique" | "news" | "admins" | "connexions" | "notifications" | "staff"
+type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "carte" | "commandes" | "utilisateurs" | "verifications" | "recuperations" | "produits" | "promos" | "logistique" | "crypto" | "news" | "admins" | "connexions" | "notifications" | "staff"
 
 const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "commandes-en-cours", label: "Commandes en cours", icon: Inbox },
@@ -46,6 +47,7 @@ const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
   { id: "promos", label: "Codes promo", icon: Ticket },
   { id: "carte", label: "Carte interactive", icon: Map },
   { id: "logistique", label: "Logistique", icon: Truck },
+  { id: "crypto", label: "Paiements crypto", icon: Wallet },
   { id: "commandes", label: "Récap commandes", icon: ListOrdered },
   { id: "utilisateurs", label: "Utilisateurs", icon: Users },
   { id: "verifications", label: "Vérifications", icon: ShieldCheck },
@@ -320,6 +322,8 @@ export function AdminPanel({
             <AdminCartSettings />
             <AdminLogistics />
           </div>
+        ) : tab === "crypto" ? (
+          <AdminCryptoSettings />
         ) : tab === "news" ? (
           <AdminNews />
         ) : tab === "connexions" ? (

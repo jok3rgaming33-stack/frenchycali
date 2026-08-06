@@ -153,7 +153,11 @@ export function CheckoutCart({
   const [meetupHour, setMeetupHour] = useState("")
   const [promoCode, setPromoCode] = useState("")
   const [placing, setPlacing] = useState(false)
-  const [done, setDone] = useState<{ trackingToken: string; threadId: number } | null>(null)
+  const [done, setDone] = useState<{
+    trackingToken: string
+    threadId: number
+    cryptoPayment?: { enabled: boolean; invoiceUrl?: string; paymentStatus?: string; error?: string }
+  } | null>(null)
   const [error, setError] = useState("")
 
   const [config, setConfig] = useState<CartConfig>(FALLBACK_CONFIG)
@@ -300,7 +304,11 @@ export function CheckoutCart({
         return
       }
       setCart([])
-      setDone({ trackingToken: res.trackingToken!, threadId: res.threadId! })
+      setDone({
+        trackingToken: res.trackingToken!,
+        threadId: res.threadId!,
+        cryptoPayment: res.cryptoPayment,
+      })
     } catch {
       setError("Erreur réseau. Réessaie.")
     } finally {
@@ -309,6 +317,7 @@ export function CheckoutCart({
   }
 
   if (done) {
+    const payUrl = done.cryptoPayment?.enabled ? done.cryptoPayment.invoiceUrl : null
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px", textAlign: "center" }}>
         <div style={{ borderRadius: 24, border: `1px solid ${cardBorder}`, background: "rgba(20,18,12,.92)", padding: "40px 24px" }}>
@@ -321,9 +330,43 @@ export function CheckoutCart({
               ? "Mode Locker Mondial Relay — ouvre la messagerie pour sauvegarder ton token TRK_ (affiché une seule fois)."
               : "Tu peux suivre ta commande et écrire au vendeur depuis Mes commandes."}
           </p>
-          <p style={{ margin: "0 0 24px", fontSize: 11, color: "rgba(200,190,170,.5)", wordBreak: "break-all" }}>
+          <p style={{ margin: "0 0 16px", fontSize: 11, color: "rgba(200,190,170,.5)", wordBreak: "break-all" }}>
             Suivi : {done.trackingToken}
           </p>
+
+          {payUrl && (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}12`, textAlign: "left" }}>
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: accentColor, fontFamily: "Orbitron,sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                Paiement multi-crypto
+              </p>
+              <p style={{ margin: "0 0 12px", fontSize: 12, color: textMuted, lineHeight: 1.5 }}>
+                Choisis ta crypto (BTC, ETH, XMR, USDT…) et paie en toute sécurité. Le statut se met à jour automatiquement.
+              </p>
+              <a
+                href={payUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "center",
+                  padding: "14px 16px",
+                  borderRadius: 999,
+                  background: `linear-gradient(120deg,${accentColor},${primaryColor})`,
+                  color: isDeliveryShop ? "#000814" : "#0f0d07",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  textDecoration: "none",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Payer en crypto
+              </a>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={onOrderPlaced}

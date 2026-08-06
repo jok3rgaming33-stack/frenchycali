@@ -9,6 +9,7 @@ import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { ensureRatingsSchema } from "@/app/actions/ratings"
 import { buildRatingInviteMessage } from "@/lib/order-items"
+import { createCryptoInvoiceForOrder } from "@/app/actions/crypto-payment"
 
 export type CartItem = { productId?: number; title: string; variant: string; price: number; qty: number }
 
@@ -240,9 +241,47 @@ export async function placeOrder(input: PlaceOrderInput) {
     /* push optionnel */
   }
 
+  // Paiement multi-crypto (NOWPayments) — optionnel, ne bloque jamais la commande
+  let cryptoPayment: {
+    enabled: boolean
+    invoiceUrl?: string
+    paymentStatus?: string
+    error?: string
+  } = { enabled: false }
+
+  try {
+    const inv = await createCryptoInvoiceForOrder({
+      threadId: thread.id,
+      totalEur: total,
+      customerToken,
+      customerName: customerName || "Client",
+      shop,
+    })
+    if (inv.ok) {
+      cryptoPayment = {
+        enabled: true,
+        invoiceUrl: inv.invoiceUrl,
+        paymentStatus: inv.paymentStatus,
+      }
+    } else if (!inv.skipped) {
+      cryptoPayment = { enabled: false, error: inv.error }
+      console.error("[placeOrder] crypto invoice skipped:", inv.error)
+    }
+  } catch (e) {
+    console.error("[placeOrder] crypto invoice error:", e)
+  }
+
   revalidatePath("/admin")
   revalidatePath("/messagerie")
-  return { ok: true as const, trackingToken, threadId: thread.id, total, deliveryFee, discount }
+  return {
+    ok: true as const,
+    trackingToken,
+    threadId: thread.id,
+    total,
+    deliveryFee,
+    discount,
+    cryptoPayment,
+  }
 }
 
 export async function getOrdersByToken(customerToken: string) {

@@ -195,6 +195,14 @@ export const orderThreads = pgTable("order_threads", {
   depositConfirmed: boolean("deposit_confirmed").notNull().default(false),  // Admin a confirmé réception
   clientLastSeen: timestamp("client_last_seen", { withTimezone: true }),    // Dernière ouverture du fil par le client
   status: text("status").notNull().default("nouveau"),
+  // Paiement multi-crypto (NOWPayments) — nullable = commande sans gateway / legacy
+  paymentProvider: text("payment_provider"),           // 'nowpayments' | null
+  paymentProviderId: text("payment_provider_id"),     // invoice/payment id
+  paymentStatus: text("payment_status"),               // awaiting | confirmed | failed | ...
+  paymentCrypto: text("payment_crypto"),               // btc | eth | xmr | usdt...
+  paymentAmountCrypto: text("payment_amount_crypto"),
+  paymentAmountEur: integer("payment_amount_eur"),
+  paymentPayUrl: text("payment_pay_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
