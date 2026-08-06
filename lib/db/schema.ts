@@ -432,3 +432,21 @@ export const accountRecoveryClaims = pgTable("account_recovery_claims", {
 })
 
 export type AccountRecoveryClaim = typeof accountRecoveryClaims.$inferSelect
+
+// Canal communautaire (toutes boutiques).
+// favoriteShop = caliboyz31 | caliboyz94 | calidelivery | null (aucun favori).
+// media = pièces jointes image/vidéo ; deletedAt = soft-delete (modération admin).
+export type CommunityMedia = { type: "image" | "video"; url: string }
+
+export const communityMessages = pgTable("community_messages", {
+  id: serial("id").primaryKey(),
+  userToken: text("user_token").notNull(),
+  pseudo: text("pseudo").notNull(),
+  favoriteShop: text("favorite_shop"),
+  body: text("body").notNull().default(""),
+  media: jsonb("media").$type<CommunityMedia[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+})
+
+export type CommunityMessage = typeof communityMessages.$inferSelect

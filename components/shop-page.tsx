@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { ShoppingCart, User, Package, Star, MessageCircle, Truck, Heart, HelpCircle, Shield, Menu, X as XIcon, RefreshCw } from "lucide-react"
+import { ShoppingCart, User, Package, Star, MessageCircle, Truck, Heart, HelpCircle, Shield, Menu, X as XIcon, RefreshCw, Users } from "lucide-react"
 import type { Product } from "@/lib/db/schema"
 
 const FAVORITE_KEY = "favoriteUniverse"
@@ -36,6 +36,7 @@ import { ProductReviewsModal } from "@/components/product-reviews-modal"
 import { ProductBadges } from "@/components/product-badge"
 import { resolveBadges } from "@/lib/badges"
 import { getProductRatingSummaries, type ProductRatingSummary } from "@/app/actions/ratings"
+import { CommunityChatModal } from "@/components/community-chat-modal"
 
 type Shop = "caliboyz31" | "caliboyz94" | "calidelivery"
 
@@ -95,6 +96,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const [favoriteClearedMsg, setFavoriteClearedMsg] = useState(false)
   const [ratingMap, setRatingMap] = useState<Record<number, ProductRatingSummary>>({})
   const [reviewsProduct, setReviewsProduct] = useState<Product | null>(null)
+  const [communityOpen, setCommunityOpen] = useState(false)
 
   const userData = { token: userToken || undefined, pseudo: userPseudo || undefined }
 
@@ -333,6 +335,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const navItems = [
     { label: "NOS PRODUITS",       icon: <ShoppingCart style={{width:14,height:14}} />, action: () => { setView("shop"); setMobileMenuOpen(false) } },
     { label: "MESSAGERIE",         icon: <MessageCircle style={{width:14,height:14}} />, action: () => { setMsgOpen(true); setMobileMenuOpen(false) } },
+    { label: "CANAL COMMUNAUTÉ",   icon: <Users style={{width:14,height:14}} />, action: () => { setCommunityOpen(true); setMobileMenuOpen(false) } },
     { label: "LIVRAISON / MEET-UP",icon: <Truck style={{width:14,height:14}} />, action: () => { setDeliveryOpen(true); setMobileMenuOpen(false) } },
     { label: "MES COMMANDES",      icon: <Package style={{width:14,height:14}} />, action: () => { setOrdersOpen(true); setMobileMenuOpen(false) } },
     { label: "ESPACE FIDÉLITÉ",    icon: <Heart style={{width:14,height:14}} />, action: () => { setLoyaltyOpen(true); setMobileMenuOpen(false) } },
@@ -883,6 +886,17 @@ export function ShopPage({ shop, initialProducts }: Props) {
           isDelivery={isDelivery}
         />
       )}
+      <CommunityChatModal
+        isOpen={communityOpen}
+        onClose={() => setCommunityOpen(false)}
+        userToken={userToken}
+        userPseudo={userPseudo}
+        isAdmin={isAdmin}
+        accentColor={accentColor}
+        primaryColor={primaryColor}
+        cardBorder={cardBorder}
+        isDelivery={isDelivery}
+      />
 
       {/* ══ CHANGER DE PLUG ══ */}
       {plugOpen && (
