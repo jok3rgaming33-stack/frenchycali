@@ -1,8 +1,17 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ShoppingCart, User, Package, Star, MessageCircle, Truck, Heart, HelpCircle, Shield, Menu, X as XIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ShoppingCart, User, Package, Star, MessageCircle, Truck, Heart, HelpCircle, Shield, Menu, X as XIcon, RefreshCw } from "lucide-react"
 import type { Product } from "@/lib/db/schema"
+
+const FAVORITE_KEY = "favoriteUniverse"
+const PLUG_OPTIONS = [
+  { key: "caliboyz31" as const, label: "Cali Boyz 31", border: "#ffca28" },
+  { key: "caliboyz94" as const, label: "Cali Boyz 94", border: "#e65100" },
+  { key: "calidelivery" as const, label: "CaliDelivery", border: "#8b00ff" },
+]
+type PlugKey = (typeof PLUG_OPTIONS)[number]["key"]
 import { LoginPage } from "@/components/login-page"
 import { CheckoutCart } from "@/components/checkout-cart"
 import { OrderTracker } from "@/components/order-tracker"
@@ -34,6 +43,7 @@ interface Props {
 type CartItem = { productId: number; title: string; variant: string; price: number; qty: number }
 
 export function ShopPage({ shop, initialProducts }: Props) {
+  const router = useRouter()
   const isDelivery = shop === "calidelivery"
   const theme = isDelivery ? "delivery" : "gold"
 
@@ -76,8 +86,53 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const [howOpen, setHowOpen] = useState(false)
   const [deliveryOpen, setDeliveryOpen] = useState(false)
   const [dashOpen, setDashOpen] = useState(false)
+  const [plugOpen, setPlugOpen] = useState(false)
+  const [favoritePlug, setFavoritePlug] = useState<PlugKey | null>(null)
+  const [favoriteClearedMsg, setFavoriteClearedMsg] = useState(false)
 
   const userData = { token: userToken || undefined, pseudo: userPseudo || undefined }
+
+  useEffect(() => {
+    if (!plugOpen) {
+      setFavoriteClearedMsg(false)
+      return
+    }
+    try {
+      const stored = localStorage.getItem(FAVORITE_KEY)
+      if (stored && PLUG_OPTIONS.some((p) => p.key === stored)) {
+        setFavoritePlug(stored as PlugKey)
+      } else {
+        setFavoritePlug(null)
+      }
+    } catch { /* ignore */ }
+  }, [plugOpen])
+
+  const setFavoriteAndGo = (key: PlugKey) => {
+    try {
+      localStorage.setItem(FAVORITE_KEY, key)
+      setFavoritePlug(key)
+      setFavoriteClearedMsg(false)
+    } catch { /* ignore */ }
+    setPlugOpen(false)
+    setMobileMenuOpen(false)
+    if (key === shop) return
+    router.push(`/${key}`)
+  }
+
+  const clearFavorite = () => {
+    try {
+      localStorage.removeItem(FAVORITE_KEY)
+      setFavoritePlug(null)
+      setFavoriteClearedMsg(true)
+    } catch { /* ignore */ }
+  }
+
+  const goToChoix = () => {
+    clearFavorite()
+    setPlugOpen(false)
+    setMobileMenuOpen(false)
+    router.push("/choix")
+  }
 
   const enterAsClient = useCallback((token: string, pseudo: string, admin: boolean, preview: boolean) => {
     localStorage.setItem("authToken", token)
@@ -257,6 +312,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
     { label: "MES COMMANDES",      icon: <Package style={{width:14,height:14}} />, action: () => { setOrdersOpen(true); setMobileMenuOpen(false) } },
     { label: "ESPACE FIDÉLITÉ",    icon: <Heart style={{width:14,height:14}} />, action: () => { setLoyaltyOpen(true); setMobileMenuOpen(false) } },
     { label: "COMMENT ÇA MARCHE", icon: <HelpCircle style={{width:14,height:14}} />, action: () => { setHowOpen(true); setMobileMenuOpen(false) } },
+    { label: "CHANGER DE PLUG",    icon: <RefreshCw style={{width:14,height:14}} />, action: () => { setPlugOpen(true); setMobileMenuOpen(false) } },
   ]
 
   const productImage = (p: Product) => p.image || p.media?.[0]?.url || null
@@ -752,6 +808,150 @@ export function ShopPage({ shop, initialProducts }: Props) {
       <DeliveryInfoModal isOpen={deliveryOpen} onClose={() => setDeliveryOpen(false)} />
       <UserDashboardModal isOpen={dashOpen} onClose={() => setDashOpen(false)} userData={userData} onLogout={logout} />
       {userToken ? <NewsPopup token={userToken} /> : null}
+
+      {/* ══ CHANGER DE PLUG ══ */}
+      {plugOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Changer de Plug"
+          onClick={() => setPlugOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 80,
+            background: "rgba(0,0,0,.72)", backdropFilter: "blur(6px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%", maxWidth: 420,
+              borderRadius: 20,
+              border: `1px solid ${cardBorder}`,
+              background: isDelivery ? "rgba(18,0,31,.98)" : "rgba(20,18,12,.98)",
+              boxShadow: `0 0 40px ${glowColor}, 0 24px 60px rgba(0,0,0,.75)`,
+              padding: "22px 20px 18px",
+              color: isDelivery ? "#f0f8ff" : "#f5e8c7",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+              <div>
+                <h2 style={{
+                  margin: 0, fontFamily: "Orbitron,sans-serif", fontSize: 15, fontWeight: 900,
+                  letterSpacing: "0.12em", textTransform: "uppercase",
+                  background: `linear-gradient(90deg,${accentColor},${primaryColor})`,
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                }}>
+                  Changer de Plug
+                </h2>
+                <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5, color: "rgba(200,190,170,.7)" }}>
+                  Choisis ton univers favori, ou reviens à la page de choix à la prochaine connexion.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPlugOpen(false)}
+                aria-label="Fermer"
+                style={{
+                  flexShrink: 0, background: "transparent", border: `1px solid ${cardBorder}`,
+                  borderRadius: 10, padding: 8, cursor: "pointer", color: "rgba(200,190,170,.75)",
+                  display: "flex", alignItems: "center",
+                }}
+              >
+                <XIcon style={{ width: 16, height: 16 }} />
+              </button>
+            </div>
+
+            {favoritePlug && (
+              <p style={{
+                margin: "12px 0 0", padding: "8px 12px", borderRadius: 10,
+                border: `1px solid ${cardBorder}`, background: `rgba(${isDelivery ? "0,255,157" : "255,202,40"},.08)`,
+                fontSize: 12, color: accentColor,
+              }}>
+                ★ Favori actuel :{" "}
+                <strong>{PLUG_OPTIONS.find((p) => p.key === favoritePlug)?.label ?? favoritePlug}</strong>
+              </p>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+              {PLUG_OPTIONS.map((opt) => {
+                const isCurrent = shop === opt.key
+                const isFav = favoritePlug === opt.key
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setFavoriteAndGo(opt.key)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                      width: "100%", padding: "14px 16px", borderRadius: 14, cursor: "pointer",
+                      border: `1px solid ${isFav ? opt.border : cardBorder}`,
+                      borderLeft: `4px solid ${opt.border}`,
+                      background: isFav
+                        ? `linear-gradient(90deg, ${opt.border}22, transparent)`
+                        : "rgba(255,255,255,.03)",
+                      color: isDelivery ? "#f0f8ff" : "#f5e8c7",
+                      fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 12,
+                      letterSpacing: "0.08em", textTransform: "uppercase",
+                      boxShadow: isFav ? `0 0 16px ${opt.border}40` : "none",
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isFav ? "★" : "☆"} {opt.label}
+                    </span>
+                    <span style={{ fontSize: 10, opacity: 0.75, fontFamily: "Inter,system-ui,sans-serif", letterSpacing: "0.04em", fontWeight: 600 }}>
+                      {isCurrent && isFav ? "En cours" : isCurrent ? "Ici · définir favori" : isFav ? "Aller" : "Favori + aller"}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div style={{ height: 1, background: cardBorder, margin: "18px 0 14px" }} />
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  clearFavorite()
+                }}
+                disabled={!favoritePlug}
+                style={{
+                  width: "100%", padding: "12px 14px", borderRadius: 12, cursor: favoritePlug ? "pointer" : "default",
+                  border: `1px solid ${cardBorder}`,
+                  background: "transparent",
+                  color: favoritePlug ? "rgba(200,190,170,.9)" : "rgba(200,190,170,.35)",
+                  fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+                }}
+              >
+                {favoritePlug
+                  ? "Refaire mon choix à la prochaine connexion"
+                  : "Aucun favori défini"}
+              </button>
+              <button
+                type="button"
+                onClick={goToChoix}
+                style={{
+                  width: "100%", padding: "12px 14px", borderRadius: 12, cursor: "pointer",
+                  border: "none",
+                  background: `linear-gradient(120deg,${accentColor},${primaryColor})`,
+                  color: isDelivery ? "#000814" : "#0f0d07",
+                  fontFamily: "Orbitron,sans-serif",
+                  fontSize: 12, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase",
+                }}
+              >
+                Aller à la page de choix
+              </button>
+              {favoriteClearedMsg && (
+                <p style={{ margin: "4px 0 0", fontSize: 11, lineHeight: 1.45, color: "rgba(200,190,170,.55)", textAlign: "center" }}>
+                  Favori retiré. À la prochaine visite sur l&apos;accueil, tu passeras par la page de choix.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </CartProvider>
     </NotificationsProvider>
