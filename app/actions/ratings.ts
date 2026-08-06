@@ -376,17 +376,3 @@ export async function getProductReviews(
   }
 }
 
-/** Corps du message d'invitation à noter (séparé des points fidélité). */
-export function buildRatingInviteMessage(threadId: number): string {
-  return [
-    "⭐ Ta commande est livrée — dis-nous ce que tu en as pensé !",
-    "",
-    "Tu peux noter uniquement les produits de cette commande.",
-    "",
-    `[rate:${threadId}]`,
-  ].join("\n")
-}
-
-export function isDeliveredStatus(status: string | null | undefined): boolean {
-  return isDelivered(status)
-}

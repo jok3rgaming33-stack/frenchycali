@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache"
 import { notifyVendor, notifyCustomer } from "@/lib/push"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
-import { buildRatingInviteMessage, ensureRatingsSchema } from "@/app/actions/ratings"
+import { ensureRatingsSchema } from "@/app/actions/ratings"
+import { buildRatingInviteMessage } from "@/lib/order-items"
 
 export type CartItem = { productId?: number; title: string; variant: string; price: number; qty: number }
 

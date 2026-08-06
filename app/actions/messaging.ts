@@ -8,7 +8,7 @@ import { normalizeStatus, statusMeta } from "@/lib/order-status"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { notifyCustomer, notifyVendor } from "@/lib/push"
 import { adjustStock } from "@/app/actions/products"
-import { buildRatingInviteMessage } from "@/app/actions/ratings"
+import { buildRatingInviteMessage } from "@/lib/order-items"
 
 export type NewOrderInput = {
   customerName: string
