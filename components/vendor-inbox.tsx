@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef } from "react"
 import type { OrderThread } from "@/lib/db/schema"
-import { STATUS_LABELS } from "@/lib/order-status"
+import {
+  VENDOR_STATUS_OPTIONS,
+  VENDOR_LOCKER_STATUS_OPTIONS,
+  statusMeta,
+  isClosedStatus,
+  normalizeStatus,
+} from "@/lib/order-status"
 import { listAllOrders, updateOrderStatus, sendAdminMessage, getThreadMessages } from "@/app/actions/order"
 import { Send, RefreshCw } from "lucide-react"
 
@@ -17,7 +23,8 @@ const ACCENT = "#ffca28"
 const BORDER = "rgba(255,202,40,.16)"
 const BG_CARD = "rgba(20,18,12,.88)"
 
-const STATUSES = ["nouveau","confirme","en_preparation","en_route","livree","annulee","locker_en_attente_paiement","locker_paiement_recu","locker_expedie","locker_livre"]
+const ORDER_STATUSES = [...VENDOR_STATUS_OPTIONS]
+const LOCKER_STATUSES = [...VENDOR_LOCKER_STATUS_OPTIONS]
 
 export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Props) {
   const [threads, setThreads] = useState<OrderThread[]>(initialThreads)
@@ -74,16 +81,23 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
     try {
       await updateOrderStatus(threadId, status)
       setThreads((prev) => prev.map((t) => t.id === threadId ? { ...t, status } : t))
-      if (selected?.id === threadId) setSelected((s) => s ? { ...s, status } : s)
+      if (selected?.id === threadId) {
+        setSelected((s) => s ? { ...s, status } : s)
+        await loadMsgs(threadId)
+      }
     } catch {} finally { setStatusLoading(false) }
   }
 
+  const statusOptions =
+    selected?.fulfillment === "locker" || mode === "locker" ? LOCKER_STATUSES : ORDER_STATUSES
+
   const filtered = threads.filter((t) => {
-    const matchSearch = !searchTerm || t.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || t.summary.toLowerCase().includes(searchTerm.toLowerCase()) || t.trackingToken.includes(searchTerm)
+    const matchSearch = !searchTerm || t.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || t.summary.toLowerCase().includes(searchTerm.toLowerCase()) || (t.products ?? "").toLowerCase().includes(searchTerm.toLowerCase()) || t.trackingToken.includes(searchTerm)
     if (!matchSearch) return false
-    if (mode === "orders") return !["livree","annulee","locker_livre"].includes(t.status) && t.fulfillment !== "locker"
-    if (mode === "locker") return t.fulfillment === "locker" && !["locker_livre","annulee"].includes(t.status)
-    if (mode === "past") return ["livree","annulee","locker_livre"].includes(t.status)
+    if (t.status === "trk_token") return mode === "messages"
+    if (mode === "orders") return t.fulfillment !== "locker" && !isClosedStatus(t.status)
+    if (mode === "locker") return t.fulfillment === "locker" && !isClosedStatus(t.status)
+    if (mode === "past") return isClosedStatus(t.status)
     return true
   })
 
@@ -97,7 +111,10 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
               <div>
                 <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: ACCENT, fontSize: 12, marginBottom: 6, padding: 0 }}>← Retour</button>
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f5e8c7" }}>{selected.customerName}</h2>
-                <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(200,190,170,.7)" }}>{selected.summary}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(200,190,170,.75)", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{selected.summary}</p>
+                {selected.products && (
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(200,190,170,.65)" }}>{selected.products}</p>
+                )}
                 <p style={{ margin: "3px 0 0", fontSize: 11, color: ACCENT, fontWeight: 700 }}>{selected.total}€ · {selected.fulfillment} · #{selected.trackingToken.slice(0, 12)}</p>
                 {selected.address && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(200,190,170,.6)" }}>📍 {selected.address}</p>}
                 {(selected.paymentStatus || selected.paymentProvider) && (
@@ -133,9 +150,15 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
                   </p>
                 )}
               </div>
-              <select value={selected.status} onChange={(e) => handleStatus(selected.id, e.target.value)} disabled={statusLoading}
-                style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer" }}>
-                {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
+              <select
+                value={statusOptions.includes(selected.status as typeof statusOptions[number]) ? selected.status : normalizeStatus(selected.status)}
+                onChange={(e) => handleStatus(selected.id, e.target.value)}
+                disabled={statusLoading}
+                style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer" }}
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>{statusMeta(s).label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -144,7 +167,7 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
           <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10, minHeight: 300 }}>
             {messages.map((m) => (
               <div key={m.id} style={{ display: "flex", justifyContent: m.sender === "vendeur" ? "flex-end" : "flex-start" }}>
-                <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: m.sender === "vendeur" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.sender === "vendeur" ? "linear-gradient(135deg,#ffca28,#e65100)" : "rgba(40,38,30,.9)", border: m.sender === "vendeur" ? "none" : `1px solid ${BORDER}`, color: m.sender === "vendeur" ? "#0f0d07" : "#f5e8c7", fontSize: 13 }}>
+                <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: m.sender === "vendeur" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.sender === "vendeur" ? "linear-gradient(135deg,#ffca28,#e65100)" : "rgba(40,38,30,.9)", border: m.sender === "vendeur" ? "none" : `1px solid ${BORDER}`, color: m.sender === "vendeur" ? "#0f0d07" : "#f5e8c7", fontSize: 13, whiteSpace: "pre-wrap" }}>
                   {m.body}
                   <p style={{ margin: "4px 0 0", fontSize: 10, opacity: 0.6 }}>{m.sender} · {new Date(m.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
                 </div>
@@ -197,8 +220,8 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 12 }}>
           {filtered.map((t) => {
-            const st = STATUS_LABELS[t.status] ?? t.status
-            const isNew = t.status === "nouveau"
+            const st = statusMeta(t.status).label
+            const isNew = normalizeStatus(t.status) === "en_attente"
             return (
               <button key={t.id} onClick={() => setSelected(t)}
                 style={{ textAlign: "left", padding: "16px 18px", borderRadius: 16, border: `1px solid ${isNew ? ACCENT : BORDER}`, background: BG_CARD, cursor: "pointer", transition: "all .2s",
@@ -207,7 +230,7 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
                   <span style={{ fontWeight: 700, fontSize: 14, color: "#f5e8c7" }}>{t.customerName}</span>
                   <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: isNew ? "rgba(255,202,40,.15)" : "rgba(255,255,255,.06)", color: isNew ? ACCENT : "rgba(200,190,170,.7)", fontWeight: 600 }}>{st}</span>
                 </div>
-                <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(200,190,170,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.summary}</p>
+                <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(200,190,170,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.products || t.summary}</p>
                 <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
                   <span style={{ color: ACCENT, fontWeight: 700 }}>{t.total}€</span>
                   <span style={{ color: "rgba(200,190,170,.6)" }}>{t.fulfillment}</span>

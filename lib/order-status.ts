@@ -4,6 +4,7 @@ export const ORDER_STATUS_DEFAULT = "en_attente"
 
 // Options sélectionnables par le vendeur pour les commandes
 export const VENDOR_STATUS_OPTIONS = [
+  "en_attente",
   "validee",
   "preparation",
   "pret_meetup",
@@ -20,6 +21,16 @@ export const VENDOR_DISCUSSION_STATUS_OPTIONS = [
   "ferme",
 ] as const
 
+export const VENDOR_LOCKER_STATUS_OPTIONS = [
+  "en_attente",
+  "validee",
+  "preparation",
+  "locker_paiement_recu",
+  "locker_expedie",
+  "locker_livre",
+  "annulee",
+] as const
+
 export type OrderStatusKey =
   | "discussion"
   | "pris_en_charge"
@@ -33,6 +44,10 @@ export type OrderStatusKey =
   | "livraison"
   | "livree"
   | "annulee"
+  | "locker_en_attente_paiement"
+  | "locker_paiement_recu"
+  | "locker_expedie"
+  | "locker_livre"
 
 type StatusMeta = {
   label: string
@@ -103,6 +118,26 @@ export const STATUS_META: Record<string, StatusMeta> = {
     badge: "bg-red-500/15 text-red-400 border border-red-500/30",
     accent: "text-red-400",
   },
+  locker_en_attente_paiement: {
+    label: "Locker — attente paiement",
+    badge: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+    accent: "text-amber-400",
+  },
+  locker_paiement_recu: {
+    label: "Locker — paiement reçu",
+    badge: "bg-sky-500/15 text-sky-400 border border-sky-500/30",
+    accent: "text-sky-400",
+  },
+  locker_expedie: {
+    label: "Locker — expédié",
+    badge: "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30",
+    accent: "text-indigo-300",
+  },
+  locker_livre: {
+    label: "Locker livré",
+    badge: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+    accent: "text-emerald-400",
+  },
 }
 
 // Normalise un statut stocké (gère les anciens libellés) vers une clé connue
@@ -112,6 +147,9 @@ export function normalizeStatus(raw: string | null | undefined): OrderStatusKey 
   if (key in STATUS_META) return key as OrderStatusKey
   // Compat anciens libellés
   if (key === "nouveau" || key === "en cours" || key === "en_cours") return "en_attente"
+  if (key === "confirme" || key === "confirmée" || key === "confirmee") return "validee"
+  if (key === "en_preparation") return "preparation"
+  if (key === "en_route") return "livraison"
   if (key === "traité" || key === "traite") return "livree"
   // Discussion statuses passés directement
   if (key === "pris_en_charge" || key === "ouvert" || key === "ferme") return key as OrderStatusKey
@@ -128,7 +166,12 @@ export const STATUS_LABELS: Record<string, string> = Object.fromEntries(
 )
 
 // Statuts considérés comme "terminés" (commandes passées)
-export const CLOSED_STATUSES: OrderStatusKey[] = ["livree", "annulee"]
+export const CLOSED_STATUSES: OrderStatusKey[] = ["livree", "annulee", "locker_livre"]
+
+/** Texte inséré dans le fil client/vendeur à chaque changement de statut. */
+export function statusThreadMessage(raw: string | null | undefined): string {
+  return `📦 Statut mis à jour : ${statusMeta(raw).label}`
+}
 
 export function isClosedStatus(raw: string | null | undefined): boolean {
   return CLOSED_STATUSES.includes(normalizeStatus(raw))

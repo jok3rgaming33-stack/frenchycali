@@ -25,6 +25,10 @@ const ORDER_THREAD_COLUMNS = [
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
 ] as const
 
+const THREAD_MESSAGE_COLUMNS = [
+  `ALTER TABLE thread_messages ADD COLUMN IF NOT EXISTS client_read_at TIMESTAMPTZ`,
+] as const
+
 let ready = false
 let inflight: Promise<void> | null = null
 
@@ -32,7 +36,7 @@ export async function ensureOrderThreadsColumns(): Promise<void> {
   if (!hasDatabase || !pool || ready) return
   if (inflight) return inflight
   inflight = (async () => {
-    for (const stmt of ORDER_THREAD_COLUMNS) {
+    for (const stmt of [...ORDER_THREAD_COLUMNS, ...THREAD_MESSAGE_COLUMNS]) {
       try {
         await pool!.query(stmt)
       } catch (e) {

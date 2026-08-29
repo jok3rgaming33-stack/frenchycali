@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
 import { notifyVendor, notifyCustomer } from "@/lib/push"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
+import { statusMeta, statusThreadMessage } from "@/lib/order-status"
 import { ensureRatingsSchema } from "@/app/actions/ratings"
 import { buildRatingInviteMessage } from "@/lib/order-items"
 import { createCryptoInvoiceForOrder } from "@/app/actions/crypto-payment"
@@ -115,7 +116,9 @@ async function placeOrderInner(input: PlaceOrderInput) {
 
   const total = Math.max(0, subtotal - discount + deliveryFee)
   const lines = items.map((i) => `• ${i.qty}x ${i.title} (${i.variant}) — ${i.price * i.qty}€`).join("\n")
-  const productsShort = items.map((i) => `${i.qty}x ${i.title}`).join(", ")
+  const productsShort = items
+    .map((i) => `${i.qty}x ${i.title}${i.variant ? ` (${i.variant})` : ""}`)
+    .join(", ")
   const itemsJson = items
     .filter((i) => i.productId && i.productId > 0)
     .map((i) => ({
@@ -314,6 +317,7 @@ export async function getOrderByTracking(trackingToken: string) {
 }
 
 export async function getThreadMessages(threadId: number) {
+  await ensureOrderThreadsColumns()
   return db.select().from(threadMessages).where(eq(threadMessages.threadId, threadId)).orderBy(threadMessages.createdAt)
 }
 
@@ -361,6 +365,7 @@ export async function updateOrderStatus(threadId: number, status: string) {
   if (!thread[0]) return { ok: false as const }
 
   const prev = thread[0].status
+  await ensureOrderThreadsColumns()
   await db.update(orderThreads).set({ status, updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
 
   const becameDelivered =
@@ -369,23 +374,36 @@ export async function updateOrderStatus(threadId: number, status: string) {
     prev !== "livree" &&
     prev !== "locker_livre"
 
-  if (thread[0].customerToken) {
+  const label = statusMeta(status).label
+
+  if (becameDelivered) {
+    const mode =
+      thread[0].fulfillment === "meetup"
+        ? "en meet-up"
+        : thread[0].fulfillment === "locker"
+          ? "en Locker Mondial Relay"
+          : "en livraison"
+    const points = computeLoyaltyPoints(thread[0].total ?? 0)
+    const body1 =
+      `✨ Ta commande t'a bien été livrée (${mode}). Merci pour ta confiance !` +
+      (points > 0 ? `\n${points} point${points > 1 ? "s" : ""} de fidélité viennent d'être crédités.` : "")
+    await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body1 })
+    const body2 = buildRatingInviteMessage(threadId)
+    await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body2 })
+  } else if (prev !== status) {
+    await db.insert(threadMessages).values({
+      threadId,
+      sender: "vendeur",
+      body: statusThreadMessage(status),
+    })
+  }
+
+  if (thread[0].customerToken && prev !== status) {
     if (becameDelivered) {
-      const mode =
-        thread[0].fulfillment === "meetup"
-          ? "en meet-up"
-          : thread[0].fulfillment === "locker"
-            ? "en Locker Mondial Relay"
-            : "en livraison"
       const points = computeLoyaltyPoints(thread[0].total ?? 0)
-      // Message 1 : livraison + points (séparé de la notation)
       const body1 =
-        `✨ Ta commande t'a bien été livrée (${mode}). Merci pour ta confiance !` +
+        `✨ Ta commande t'a bien été livrée. Merci pour ta confiance !` +
         (points > 0 ? `\n${points} point${points > 1 ? "s" : ""} de fidélité viennent d'être crédités.` : "")
-      await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body1 })
-      // Message 2 : invitation à noter
-      const body2 = buildRatingInviteMessage(threadId)
-      await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body2 })
       await notifyCustomer(thread[0].customerToken, {
         title: "Commande livrée",
         body: body1.slice(0, 120),
@@ -399,11 +417,10 @@ export async function updateOrderStatus(threadId: number, status: string) {
         tag: `rate-${threadId}`,
       })
     } else {
-      const label = status.replace(/_/g, " ")
       await notifyCustomer(thread[0].customerToken, {
         title: "Commande mise à jour",
         body: `Statut : ${label}`,
-        url: `/suivi?token=${thread[0].trackingToken}`,
+        url: "/",
         tag: "order-status",
       })
     }
