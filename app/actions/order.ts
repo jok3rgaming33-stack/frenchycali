@@ -1,6 +1,6 @@
 "use server"
 
-import { db } from "@/lib/db"
+import { db, hasDatabase } from "@/lib/db"
 import { orderThreads, threadMessages, users, promoCodes, loyaltyCodes, promoUsages } from "@/lib/db/schema"
 import { eq, desc, and, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -36,6 +36,16 @@ export type PlaceOrderInput = {
  * - locker = Mondial Relay + token TRK_ one-shot
  */
 export async function placeOrder(input: PlaceOrderInput) {
+  try {
+    return await placeOrderInner(input)
+  } catch (e) {
+    console.error("[placeOrder]", e)
+    return { ok: false as const, error: "Impossible d'enregistrer la commande. Réessaie dans un instant." }
+  }
+}
+
+async function placeOrderInner(input: PlaceOrderInput) {
+  if (!hasDatabase) return { ok: false as const, error: "Service temporairement indisponible." }
   const {
     customerToken,
     customerName,

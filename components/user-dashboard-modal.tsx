@@ -11,6 +11,7 @@ import {
   removeAllWebAuthnCredentials,
 } from "@/app/actions/webauthn"
 import { loadWebAuthnBrowser } from "@/lib/webauthn-browser"
+import { AddToHomeScreen } from "@/components/add-to-home-screen"
 import {
   biometryLabel,
   clearLocalWebAuthn,
@@ -263,6 +264,10 @@ export function UserDashboardModal({ isOpen, onClose, userData, onLogout }: User
             {bioMsg && <p className="mt-2 text-xs text-accent">{bioMsg}</p>}
           </div>
         )}
+
+        <div className="mb-4">
+          <AddToHomeScreen compact />
+        </div>
 
         <button
           type="button"

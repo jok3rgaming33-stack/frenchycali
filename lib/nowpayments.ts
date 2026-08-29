@@ -66,6 +66,8 @@ export async function createNowPaymentsInvoice(
         "x-api-key": apiKey(),
       },
       body: JSON.stringify(body),
+      // Ne jamais bloquer la création de commande (mobile / Vercel timeout).
+      signal: AbortSignal.timeout(6_000),
     })
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
     if (!res.ok) {

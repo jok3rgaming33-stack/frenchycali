@@ -14,6 +14,7 @@ import {
   startWebAuthnAuthentication, finishWebAuthnAuthentication,
 } from "@/app/actions/webauthn"
 import { loadWebAuthnBrowser } from "@/lib/webauthn-browser"
+import { AddToHomeScreen } from "@/components/add-to-home-screen"
 import {
   biometryLabel, clearLocalWebAuthn, getLocalCredentialIds,
   hasLocalWebAuthn, platformAuthenticatorAvailable, rememberLocalCredential,
@@ -471,6 +472,9 @@ export function LoginPage({ onSuccess, shop }: Props) {
             </button>
           </div>
         )}
+        <div style={{ marginTop: 18 }}>
+          <AddToHomeScreen accent={isDelivery ? "#00ff9d" : "#ffca28"} compact />
+        </div>
       </div>
 
       {/* Lost key recovery modal — form → clé provisoire → KYC → attente admin */}

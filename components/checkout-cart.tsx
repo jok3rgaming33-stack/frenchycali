@@ -274,31 +274,46 @@ export function CheckoutCart({
     if (!canValidate || placing) return
     setError("")
     setPlacing(true)
+    const payload = {
+      customerToken,
+      customerName,
+      items: cart.map((i) => ({
+        productId: i.productId,
+        title: i.title,
+        variant: i.variant,
+        price: i.price,
+        qty: i.qty,
+      })),
+      fulfillment,
+      address: isMeetup
+        ? undefined
+        : isLocker
+          ? lockerAddress.trim()
+          : (resolvedLabel ?? address.trim()),
+      lat: isMeetup || isLocker ? null : coords?.lat ?? null,
+      lng: isMeetup || isLocker ? null : coords?.lng ?? null,
+      scheduledDate: isLocker ? undefined : date || undefined,
+      scheduledSlot: isLocker ? undefined : isMeetup ? meetupHour : slot,
+      promoCode: promoCode || undefined,
+      deliveryFee,
+      shop,
+    }
     try {
-      const res = await placeOrder({
-        customerToken,
-        customerName,
-        items: cart.map((i) => ({
-          productId: i.productId,
-          title: i.title,
-          variant: i.variant,
-          price: i.price,
-          qty: i.qty,
-        })),
-        fulfillment,
-        address: isMeetup
-          ? undefined
-          : isLocker
-            ? lockerAddress.trim()
-            : (resolvedLabel ?? address.trim()),
-        lat: isMeetup || isLocker ? null : coords?.lat ?? null,
-        lng: isMeetup || isLocker ? null : coords?.lng ?? null,
-        scheduledDate: isLocker ? undefined : date || undefined,
-        scheduledSlot: isLocker ? undefined : isMeetup ? meetupHour : slot,
-        promoCode: promoCode || undefined,
-        deliveryFee,
-        shop,
-      })
+      let res: Awaited<ReturnType<typeof placeOrder>> | null = null
+      try {
+        const http = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(payload),
+          credentials: "same-origin",
+          cache: "no-store",
+        })
+        const data = (await http.json().catch(() => null)) as Awaited<ReturnType<typeof placeOrder>> | null
+        if (data && typeof data.ok === "boolean") res = data
+      } catch {
+        /* Safari / PWA : fallback Server Action */
+      }
+      if (!res) res = await placeOrder(payload)
       if (!res.ok) {
         setError(res.error ?? "Erreur lors de la commande.")
         return
@@ -310,7 +325,7 @@ export function CheckoutCart({
         cryptoPayment: res.cryptoPayment,
       })
     } catch {
-      setError("Erreur réseau. Réessaie.")
+      setError("Erreur réseau. Vérifie ta connexion et réessaie.")
     } finally {
       setPlacing(false)
     }

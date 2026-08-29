@@ -2,6 +2,7 @@
 
 import { Bell, BellOff, BellRing } from "lucide-react"
 import { usePushNotifications } from "@/hooks/use-push-notifications"
+import { AddToHomeScreen } from "@/components/add-to-home-screen"
 
 // Bouton d'activation des notifications push (client ou vendeur).
 // S'adapte selon le support du navigateur et l'état d'abonnement.
@@ -21,15 +22,12 @@ export function PushToggle({
 
   if (!supported) {
     return (
-      <div className={`flex flex-col gap-1.5 ${className}`}>
+      <div className={`flex flex-col gap-2 ${className}`}>
         <p className="text-xs font-semibold text-muted-foreground">Notifications push</p>
         <p className="text-xs text-muted-foreground">
-          Non disponibles sur ce navigateur.{" "}
-          <span className="font-medium text-foreground">
-            Sur iPhone : ajoute le site à l&apos;écran d&apos;accueil
-          </span>{" "}
-          (Safari → icône Partager → «&nbsp;Sur l&apos;écran d&apos;accueil&nbsp;») puis réactive depuis la cloche.
+          Sur iPhone, installe d&apos;abord l&apos;app sur l&apos;écran d&apos;accueil, puis réouvre-la et active les notifs ici.
         </p>
+        <AddToHomeScreen compact />
       </div>
     )
   }

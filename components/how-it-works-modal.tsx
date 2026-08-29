@@ -219,6 +219,7 @@ const SECTIONS: Section[] = [
 ]
 
 import { CheckCircle2 } from "lucide-react"
+import { AddToHomeScreen } from "@/components/add-to-home-screen"
 
 type Props = {
   isOpen: boolean
@@ -347,6 +348,11 @@ export function HowItWorksModal({ isOpen, onClose, requireRead = false, onConfir
                           </li>
                         ))}
                       </ol>
+                      {section.title.startsWith("9.") && (
+                        <div className="mt-4">
+                          <AddToHomeScreen />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

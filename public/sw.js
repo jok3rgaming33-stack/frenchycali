@@ -1,9 +1,13 @@
-// Service Worker pour les notifications push Web de BreakingBad33.
-// Reçoit les messages push et affiche une notification système,
-// même quand le site / l'app est fermé ou en arrière-plan.
+// Service Worker FrenchyCali — push + installabilité PWA.
+// Ne pas intercepter les POST (Server Actions / /api/orders) : ça casse le checkout mobile.
 
 self.addEventListener("install", (event) => {
   self.skipWaiting()
+})
+
+// Ne jamais intercepter POST / Server Actions : le checkout mobile casse sinon.
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return
 })
 
 self.addEventListener("activate", (event) => {
@@ -15,10 +19,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {}
   } catch (e) {
-    data = { title: "BreakingBad33", body: event.data ? event.data.text() : "" }
+    data = { title: "FrenchyCali", body: event.data ? event.data.text() : "" }
   }
 
-  const title = data.title || "BreakingBad33"
+  const title = data.title || "FrenchyCali"
   const options = {
     body: data.body || "",
     icon: "/images/logoapp.png",

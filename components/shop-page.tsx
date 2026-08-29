@@ -37,6 +37,7 @@ import { ProductBadges } from "@/components/product-badge"
 import { resolveBadges } from "@/lib/badges"
 import { getProductRatingSummaries, type ProductRatingSummary } from "@/app/actions/ratings"
 import { CommunityChatModal } from "@/components/community-chat-modal"
+import { AddToHomeScreen } from "@/components/add-to-home-screen"
 
 type Shop = "caliboyz31" | "caliboyz94" | "calidelivery"
 
@@ -542,6 +543,9 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 color:"rgba(200,190,170,.6)", fontSize:14, fontWeight:600, cursor:"pointer", textAlign:"left" as const }}>
               <User style={{ width:16, height:16 }} />{userPseudo}
             </button>
+            <div style={{ padding:"8px 20px 16px" }}>
+              <AddToHomeScreen accent={accentColor} compact />
+            </div>
           </nav>
         )}
       </header>
