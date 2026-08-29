@@ -11,6 +11,7 @@ import {
   isNowPaymentsConfigured,
   mapNowPaymentsStatus,
 } from "@/lib/nowpayments"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 
 export type CryptoGatewayPublicStatus = {
   enabled: boolean
@@ -31,17 +32,7 @@ type GatewaySettings = {
 const DEFAULT_SETTINGS: GatewaySettings = { enabled: true }
 
 async function ensurePaymentColumns() {
-  try {
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_provider TEXT`)
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_provider_id TEXT`)
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_status TEXT`)
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_crypto TEXT`)
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_amount_crypto TEXT`)
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_amount_eur INTEGER`)
-    await db.execute(sql`ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_pay_url TEXT`)
-  } catch (e) {
-    console.error("[crypto] ensure columns:", e)
-  }
+  await ensureOrderThreadsColumns()
 }
 
 async function readGatewaySettings(): Promise<GatewaySettings> {

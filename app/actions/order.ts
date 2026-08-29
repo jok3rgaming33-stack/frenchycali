@@ -1,6 +1,7 @@
 "use server"
 
 import { db, hasDatabase } from "@/lib/db"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import { orderThreads, threadMessages, users, promoCodes, loyaltyCodes, promoUsages } from "@/lib/db/schema"
 import { eq, desc, and, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -46,6 +47,7 @@ export async function placeOrder(input: PlaceOrderInput) {
 
 async function placeOrderInner(input: PlaceOrderInput) {
   if (!hasDatabase) return { ok: false as const, error: "Service temporairement indisponible." }
+  await ensureOrderThreadsColumns()
   const {
     customerToken,
     customerName,
@@ -296,6 +298,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
 
 export async function getOrdersByToken(customerToken: string) {
   if (!customerToken) return []
+  await ensureOrderThreadsColumns()
   return db
     .select()
     .from(orderThreads)
@@ -305,6 +308,7 @@ export async function getOrdersByToken(customerToken: string) {
 
 export async function getOrderByTracking(trackingToken: string) {
   if (!trackingToken) return null
+  await ensureOrderThreadsColumns()
   const rows = await db.select().from(orderThreads).where(eq(orderThreads.trackingToken, trackingToken)).limit(1)
   return rows[0] ?? null
 }
@@ -411,6 +415,7 @@ export async function updateOrderStatus(threadId: number, status: string) {
 
 export async function listAllOrders() {
   if (!(await isAdminAuthenticated())) return []
+  await ensureOrderThreadsColumns()
   return db.select().from(orderThreads).orderBy(desc(orderThreads.createdAt))
 }
 
