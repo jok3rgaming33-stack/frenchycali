@@ -1,6 +1,6 @@
 "use server"
 
-import { db, hasDatabase } from "@/lib/db"
+import { db, hasDatabase, pool } from "@/lib/db"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import { orderThreads, threadMessages, users, promoCodes, loyaltyCodes, promoUsages } from "@/lib/db/schema"
 import { eq, desc, and, sql } from "drizzle-orm"
@@ -192,6 +192,17 @@ async function placeOrderInner(input: PlaceOrderInput) {
   }
 
   if (!thread) return { ok: false as const, error: "Erreur lors de la création de la commande." }
+
+  if (itemsJson.length > 0 && pool) {
+    try {
+      await pool.query(`UPDATE order_threads SET items_json = $1::jsonb WHERE id = $2`, [
+        JSON.stringify(itemsJson),
+        thread.id,
+      ])
+    } catch (e) {
+      console.error("[placeOrder] items_json persist:", e)
+    }
+  }
 
   await db.insert(threadMessages).values({
     threadId: thread.id,

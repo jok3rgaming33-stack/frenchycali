@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/schema"
 import { and, avg, count, desc, eq, inArray, sql } from "drizzle-orm"
 import { normalizeStatus } from "@/lib/order-status"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import { revalidatePath } from "next/cache"
 
 const DELIVERED_STATUSES = new Set(["livree", "locker_livre"])
@@ -104,20 +105,32 @@ export async function ensureRatingsSchema() {
 }
 
 /** Parse l'ancien format texte "1x Title, 2x Other ×3" → titres uniques. */
+function stripVariantSuffix(title: string): string {
+  return title.replace(/\s*\([^)]*\)\s*$/, "").trim()
+}
+
 function parseProductTitles(raw: string | null | undefined): string[] {
   if (!raw?.trim()) return []
   return raw
     .split(",")
     .map((s) => s.trim())
     .flatMap((segment) => {
-      const m = segment.match(/^\d+x\s+(.+?)(?:\s+[×x]\d+)?$/)
-      if (m) return [m[1].trim()]
-      // Lignes résumé "• 1x Title (3g)"
-      const m2 = segment.match(/^\d+x\s+(.+?)(?:\s*\(|$)/)
-      if (m2) return [m2[1].trim()]
-      return segment ? [segment] : []
+      const cleaned = segment.replace(/^•\s*/, "").replace(/\s*—\s*\d+\s*€.*$/, "").trim()
+      const m = cleaned.match(/^\d+\s*x\s+(.+)$/i)
+      const title = (m ? m[1] : cleaned).trim()
+      const core = stripVariantSuffix(title)
+      return [core, title].filter(Boolean)
     })
-    .filter(Boolean)
+}
+
+function titlesMatch(catalogTitle: string, parsed: string): boolean {
+  const a = catalogTitle.toLowerCase().trim()
+  const b = parsed.toLowerCase().trim()
+  if (!a || !b) return false
+  if (a === b) return true
+  const bCore = stripVariantSuffix(b).toLowerCase()
+  if (a === bCore) return true
+  return b.startsWith(a + " ") || b.startsWith(a + "(") || b.startsWith(a + " (")
 }
 
 function itemsFromThread(thread: {
@@ -148,6 +161,7 @@ export async function getRateableProducts(
   threadId: number,
   userToken: string,
 ): Promise<{ ok: true; products: RateableProduct[]; threadId: number } | { ok: false; error: string }> {
+  await ensureOrderThreadsColumns()
   await ensureRatingsSchema()
   if (!threadId || !userToken?.trim()) return { ok: false, error: "Données invalides." }
 
@@ -187,7 +201,7 @@ export async function getRateableProducts(
     if (uniqueTitles.length) {
       const allProds = await db.select({ id: products.id, title: products.title, image: products.image }).from(products)
       for (const title of titles) {
-        const prod = allProds.find((p) => p.title.toLowerCase() === title.toLowerCase())
+        const prod = allProds.find((p) => titlesMatch(p.title, title))
         if (prod && !snapshots.some((s) => s.productId === prod.id)) {
           snapshots.push({ productId: prod.id, title: prod.title, qty: 1, price: 0 })
         }

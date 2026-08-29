@@ -7,6 +7,7 @@ import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { statusMeta } from "@/lib/order-status"
 import { ListOrdered, Truck, Store, Package, Copy, Check, Search, Coins, Trash2, Loader2, AlertTriangle, Eye, X, Calendar, Wallet, ExternalLink } from "lucide-react"
 import { paymentStatusMeta, formatPaymentCrypto } from "@/lib/payment-status"
+import { MessageBody } from "@/components/message-body"
 
 type ThreadMessage = { id: number; sender: string; body: string; createdAt: Date | string }
 type ThreadDetail = { messages: ThreadMessage[] } & OrderThread
@@ -547,7 +548,7 @@ export function AdminOrdersRecap({ threads }: { threads: OrderThread[] }) {
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {m.sender === "client" ? detailThread.customerName : "Le Chimiste"} · {new Date(m.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                       </span>
-                      <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                      <MessageBody body={m.body} />
                     </li>
                   ))}
                 </ol>

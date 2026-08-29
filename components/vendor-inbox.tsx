@@ -10,6 +10,7 @@ import {
   normalizeStatus,
 } from "@/lib/order-status"
 import { listAllOrders, updateOrderStatus, sendAdminMessage, getThreadMessages } from "@/app/actions/order"
+import { MessageBody } from "@/components/message-body"
 import { Send, RefreshCw } from "lucide-react"
 
 interface Props {
@@ -168,7 +169,7 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
             {messages.map((m) => (
               <div key={m.id} style={{ display: "flex", justifyContent: m.sender === "vendeur" ? "flex-end" : "flex-start" }}>
                 <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: m.sender === "vendeur" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", background: m.sender === "vendeur" ? "linear-gradient(135deg,#ffca28,#e65100)" : "rgba(40,38,30,.9)", border: m.sender === "vendeur" ? "none" : `1px solid ${BORDER}`, color: m.sender === "vendeur" ? "#0f0d07" : "#f5e8c7", fontSize: 13, whiteSpace: "pre-wrap" }}>
-                  {m.body}
+                  <MessageBody body={m.body} />
                   <p style={{ margin: "4px 0 0", fontSize: 10, opacity: 0.6 }}>{m.sender} · {new Date(m.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
                 </div>
               </div>

@@ -9,17 +9,17 @@ export type OrderItemLine = {
 }
 
 /** Tag dans un message vendeur : bouton « Noter » côté client. */
-export const RATE_TAG_RE = /\[rate:(\d+)\]/i
+export const RATE_TAG_RE = /\[rate:\s*(\d+)\s*\]/gi
 
 export function extractRateThreadId(body: string): number | null {
-  const m = body.match(RATE_TAG_RE)
+  const m = new RegExp(RATE_TAG_RE).exec(body)
   if (!m) return null
   const id = parseInt(m[1], 10)
   return Number.isFinite(id) && id > 0 ? id : null
 }
 
 export function stripRateTag(body: string): string {
-  return body.replace(RATE_TAG_RE, "").replace(/\n{3,}/g, "\n\n").trim()
+  return body.replace(/\[rate:\s*\d+\s*\]/gi, "").replace(/\n{3,}/g, "\n\n").trim()
 }
 
 /** Corps du message d'invitation à noter (séparé des points fidélité). */

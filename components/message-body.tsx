@@ -73,12 +73,14 @@ export function MessageBody({ body, onRate }: MessageBodyProps) {
     <div className="flex flex-col gap-2">
       {segments.map((seg, i) => {
         if (seg.type === "text") {
+          const text = stripRateTag(seg.value)
+          if (!text) return null
           return (
             <p
               key={i}
               className="whitespace-pre-wrap break-all leading-relaxed text-sm"
             >
-              {seg.value}
+              {text}
             </p>
           )
         }

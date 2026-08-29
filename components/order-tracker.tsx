@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react"
 import { ChevronLeft, Package, MessageCircle, Send, Loader2, RefreshCw } from "lucide-react"
 import { getOrdersByToken, getThreadMessages, sendClientMessage, updateClientLastSeen } from "@/app/actions/order"
 import type { OrderThread, ThreadMessage } from "@/lib/db/schema"
-import { STATUS_LABELS } from "@/lib/order-status"
+import { statusMeta } from "@/lib/order-status"
+import { MessageBody } from "@/components/message-body"
+import { RateProductsModal } from "@/components/rate-products-modal"
 
 interface Props {
   customerToken: string
@@ -20,6 +22,7 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
   const [newMsg, setNewMsg] = useState("")
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [rateThreadId, setRateThreadId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -69,7 +72,7 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#f5e8c7" }}>Commande #{selected.id}</h2>
             <span style={{ fontSize:12, padding:"4px 12px", borderRadius:999, background:statusBg[selected.status]||"rgba(255,255,255,.08)", color:statusColor[selected.status]||"#f5e8c7", fontWeight:600 }}>
-              {STATUS_LABELS[selected.status] || selected.status}
+              {statusMeta(selected.status).label}
             </span>
           </div>
           <p style={{ margin:"6px 0 0", fontSize:12, color:"rgba(200,190,170,.7)" }}>{selected.summary}</p>
@@ -82,7 +85,9 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
             <div key={m.id} style={{ display:"flex", justifyContent:m.sender==="client"?"flex-end":"flex-start" }}>
               <div style={{ maxWidth:"75%", padding:"10px 14px", borderRadius:m.sender==="client"?"16px 16px 4px 16px":"16px 16px 16px 4px",
                 background:m.sender==="client"?`rgba(${accentColor==="#00ff9d"?"139,0,255":"255,202,40"},.15)`:"rgba(255,255,255,.06)", border:`1px solid ${cardBorder}` }}>
-                <p style={{ margin:"0 0 4px", fontSize:13, color:"#f5e8c7", lineHeight:1.5 }}>{m.body}</p>
+                <div style={{ margin:"0 0 4px", fontSize:13, color:"#f5e8c7", lineHeight:1.5 }}>
+                  <MessageBody body={m.body} onRate={(id) => setRateThreadId(id)} />
+                </div>
                 <p style={{ margin:0, fontSize:10, color:"rgba(200,190,170,.5)" }}>
                   {m.sender === "client" ? "Vous" : "Vendeur"} · {new Date(m.createdAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
                 </p>
@@ -101,6 +106,16 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
         </div>
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      {rateThreadId != null && (
+        <RateProductsModal
+          isOpen
+          onClose={() => setRateThreadId(null)}
+          threadId={rateThreadId}
+          userToken={customerToken}
+          accentColor={accentColor}
+          cardBorder={cardBorder}
+        />
+      )}
     </div>
   )
 
@@ -133,7 +148,7 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
               <span style={{ fontSize:14, fontWeight:700, color:"#f5e8c7" }}>#{order.id} — {order.summary.slice(0,40)}{order.summary.length>40?"...":""}</span>
               <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:statusBg[order.status]||"rgba(255,255,255,.08)", color:statusColor[order.status]||"#f5e8c7", fontWeight:600 }}>
-                {STATUS_LABELS[order.status]||order.status}
+                {statusMeta(order.status).label}
               </span>
             </div>
             <div style={{ display:"flex", gap:16, fontSize:12, color:"rgba(200,190,170,.7)" }}>
