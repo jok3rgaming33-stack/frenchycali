@@ -10,9 +10,9 @@ import {
   normalizeStatus,
 } from "@/lib/order-status"
 import { listAllOrders, updateOrderStatus, sendAdminMessage, getThreadMessages } from "@/app/actions/order"
-import { confirmDeposit } from "@/app/actions/messaging"
+import { confirmDeposit, markParcelShipped } from "@/app/actions/messaging"
 import { MessageBody } from "@/components/message-body"
-import { Send, RefreshCw, CheckCircle2, Loader2 } from "lucide-react"
+import { Send, RefreshCw, CheckCircle2, Loader2, Truck } from "lucide-react"
 import { isParcelFulfillment, type ShopId } from "@/lib/shops"
 
 interface Props {
@@ -43,6 +43,9 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
   const [loading, setLoading] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
   const [confirmPayLoading, setConfirmPayLoading] = useState(false)
+  const [shipLoading, setShipLoading] = useState(false)
+  const [shipTracking, setShipTracking] = useState("")
+  const [shipError, setShipError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const msgEndRef = useRef<HTMLDivElement>(null)
 
@@ -130,8 +133,52 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
     }
   }
 
-  const statusOptions =
-    isParcelFulfillment(selected?.fulfillment) || mode === "locker" ? LOCKER_STATUSES : ORDER_STATUSES
+  const handleMarkShipped = async () => {
+    if (!selected || shipLoading) return
+    setShipError(null)
+    setShipLoading(true)
+    try {
+      const res = await markParcelShipped(selected.id, shipTracking)
+      if (!res.ok) {
+        setShipError(res.error ?? "Erreur")
+        return
+      }
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === selected.id
+            ? {
+                ...t,
+                status: "locker_expedie",
+                colissimoNumber: shipTracking.trim(),
+                shippedAt: new Date(),
+              }
+            : t,
+        ),
+      )
+      setSelected((s) =>
+        s
+          ? {
+              ...s,
+              status: "locker_expedie",
+              colissimoNumber: shipTracking.trim(),
+              shippedAt: new Date(),
+            }
+          : s,
+      )
+      setShipTracking("")
+      await loadMsgs(selected.id)
+    } catch {
+      setShipError("Impossible d'enregistrer l'expédition.")
+    } finally {
+      setShipLoading(false)
+    }
+  }
+
+  const isParcelThread = isParcelFulfillment(selected?.fulfillment) || mode === "locker"
+  // Delivery : le select ne sert qu'à l'annulation ; le statut courant reste visible
+  const statusOptions = isParcelThread
+    ? Array.from(new Set([selected?.status, ...LOCKER_STATUSES].filter(Boolean) as string[]))
+    : ORDER_STATUSES
 
   const filtered = threads.filter((t) => {
     const matchSearch = !searchTerm || t.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || t.summary.toLowerCase().includes(searchTerm.toLowerCase()) || (t.products ?? "").toLowerCase().includes(searchTerm.toLowerCase()) || t.trackingToken.includes(searchTerm)
@@ -158,46 +205,31 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
                 {selected.products && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(200,190,170,.65)" }}>{selected.products}</p>
                 )}
-                <p style={{ margin: "3px 0 0", fontSize: 11, color: ACCENT, fontWeight: 700 }}>{selected.total}€ · {selected.fulfillment} · #{selected.trackingToken.slice(0, 12)}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 11, color: ACCENT, fontWeight: 700 }}>
+                  {selected.total}€ · {selected.fulfillment}
+                  {selected.paymentCrypto ? ` · Paiement ${String(selected.paymentCrypto).toUpperCase()}` : ""}
+                </p>
                 {selected.address && <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(200,190,170,.6)" }}>📍 {selected.address}</p>}
-                {(selected.paymentStatus || selected.paymentProvider) && (
+                {selected.colissimoNumber && (
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(200,190,170,.85)" }}>
+                    🚚 Suivi : <strong>{selected.colissimoNumber}</strong>
+                  </p>
+                )}
+                {selected.paymentCrypto && (
                   <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(200,190,170,.85)" }}>
-                    💳 Paiement :{" "}
-                    <strong style={{
-                      color:
-                        selected.paymentStatus === "confirmed" || selected.paymentStatus === "finished"
-                          ? "#4ade80"
-                          : selected.paymentStatus === "failed" || selected.paymentStatus === "expired"
-                            ? "#f87171"
-                            : "#7dd3fc",
-                    }}>
-                      {selected.paymentStatus === "confirmed" || selected.paymentStatus === "finished"
-                        ? "Payé"
-                        : selected.paymentStatus === "failed"
-                          ? "Échoué"
-                          : selected.paymentStatus === "expired"
-                            ? "Expiré"
-                            : selected.paymentStatus === "partial" || selected.paymentStatus === "partially_paid"
-                              ? "Partiel"
-                              : "En attente"}
+                    💳 {String(selected.paymentCrypto).toUpperCase()} —{" "}
+                    <strong style={{ color: selected.depositConfirmed ? "#4ade80" : selected.depositNotified ? "#fbbf24" : "#7dd3fc" }}>
+                      {selected.depositConfirmed ? "Virement reçu" : selected.depositNotified ? "Virement signalé" : "En attente de paiement"}
                     </strong>
-                    {selected.paymentCrypto ? ` · ${String(selected.paymentCrypto).toUpperCase()}` : ""}
-                    {selected.paymentPayUrl && selected.paymentStatus !== "confirmed" && selected.paymentStatus !== "finished" ? (
-                      <>
-                        {" · "}
-                        <a href={selected.paymentPayUrl} target="_blank" rel="noopener noreferrer" style={{ color: ACCENT }}>
-                          Lien paiement
-                        </a>
-                      </>
-                    ) : null}
                   </p>
                 )}
               </div>
               <select
-                value={statusOptions.includes(selected.status as typeof statusOptions[number]) ? selected.status : normalizeStatus(selected.status)}
+                value={statusOptions.includes(selected.status) ? selected.status : normalizeStatus(selected.status)}
                 onChange={(e) => handleStatus(selected.id, e.target.value)}
                 disabled={statusLoading}
-                style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer" }}
+                title={isParcelThread ? "Annulation uniquement — le reste du flux passe par les boutons" : undefined}
+                style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer", maxWidth: 180 }}
               >
                 {statusOptions.map((s) => (
                   <option key={s} value={s}>{statusMeta(s).label}</option>
@@ -257,9 +289,62 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
               </button>
             </div>
           )}
-          {selected.depositConfirmed && (
-            <div style={{ padding: "10px 16px", borderTop: `1px solid ${BORDER}`, fontSize: 12, color: "#4ade80", fontWeight: 600 }}>
-              ✓ Virement confirmé — commande en préparation
+          {selected.depositConfirmed && selected.status === "preparation" && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "#4ade80", fontWeight: 600 }}>
+                ✓ Virement confirmé — en préparation
+              </p>
+              <input
+                value={shipTracking}
+                onChange={(e) => setShipTracking(e.target.value)}
+                placeholder="N° de suivi transporteur"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${BORDER}`,
+                  background: "rgba(0,0,0,.45)",
+                  color: "#f5e8c7",
+                  fontSize: 13,
+                  outline: "none",
+                }}
+              />
+              {shipError && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{shipError}</p>}
+              <button
+                type="button"
+                onClick={handleMarkShipped}
+                disabled={shipLoading || !shipTracking.trim()}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: "linear-gradient(135deg,#6366f1,#4f46e5)",
+                  color: "#eef2ff",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  opacity: shipLoading || !shipTracking.trim() ? 0.6 : 1,
+                }}
+              >
+                {shipLoading ? (
+                  <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} />
+                ) : (
+                  <Truck style={{ width: 16, height: 16 }} />
+                )}
+                Colis expédié
+              </button>
+            </div>
+          )}
+          {selected.status === "locker_expedie" && (
+            <div style={{ padding: "10px 16px", borderTop: `1px solid ${BORDER}`, fontSize: 12, color: "#a5b4fc", fontWeight: 600 }}>
+              📦 Expédié — en attente de confirmation de réception client
+              {selected.colissimoNumber ? ` · ${selected.colissimoNumber}` : ""}
             </div>
           )}
 

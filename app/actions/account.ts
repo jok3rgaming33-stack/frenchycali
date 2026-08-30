@@ -120,8 +120,9 @@ export async function getCustomerStats(token: string) {
   let active = 0
   let past = 0
   for (const row of rows) {
-    // Les points ne sont crédités QU'À la livraison (statut "livree").
-    if (normalizeStatus(row.status) === "livree") {
+    // Points crédités uniquement après confirmation de réception (livree / locker_livre).
+    const st = normalizeStatus(row.status)
+    if (st === "livree" || st === "locker_livre") {
       points += computeLoyaltyPoints(row.total ?? 0)
     }
     if (isClosedStatus(row.status)) past += 1

@@ -35,6 +35,8 @@ type Props = {
   userToken: string
   userPseudo: string
   isAdmin?: boolean
+  /** Boutique / page courante (affichée à côté du pseudo). */
+  shop?: string
   accentColor?: string
   primaryColor?: string
   cardBorder?: string
@@ -60,6 +62,7 @@ export function CommunityChatModal({
   userToken,
   userPseudo,
   isAdmin = false,
+  shop,
   accentColor = "#ffca28",
   primaryColor = "#e65100",
   cardBorder = "rgba(255,202,40,.18)",
@@ -142,8 +145,10 @@ export function CommunityChatModal({
   const bg = isDelivery ? "rgba(12,0,22,.98)" : "rgba(15,13,7,.98)"
   const textColor = isDelivery ? "#f0f8ff" : "#f5e8c7"
 
+  // Page courante en priorité, sinon favori localStorage
   const favoriteShop =
-    typeof window !== "undefined" ? localStorage.getItem(FAVORITE_KEY) : null
+    shop ||
+    (typeof window !== "undefined" ? localStorage.getItem(FAVORITE_KEY) : null)
 
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length || uploading) return
@@ -237,7 +242,7 @@ export function CommunityChatModal({
       role="dialog"
       aria-modal="true"
       aria-label="Canal communautaire"
-      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm"
+      className="modal-overlay fixed inset-0 z-[100] flex items-end justify-center bg-black/75 backdrop-blur-sm sm:items-center"
       onClick={onClose}
     >
       <div
@@ -365,7 +370,7 @@ export function CommunityChatModal({
                     Équipe
                   </span>
                 )}
-                {!m.isAdminAuthor && m.favoriteLabel && (
+                {m.favoriteLabel && (
                   <span
                     className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
                     style={{

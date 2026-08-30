@@ -198,6 +198,9 @@ async function placeOrderInner(input: PlaceOrderInput) {
           }`
 
   const feeSummaryLabel = parcelMode ? parcelName || "Envoi colis" : "Livraison"
+  const payCurrencyEarly = allowsCryptoCheckout(shop)
+    ? input.payCurrency?.trim().toLowerCase() || null
+    : null
 
   const summary = [
     `Nouvelle commande [${shop}] — ${customerName}`,
@@ -206,6 +209,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     ``,
     !parcelMode && scheduledDate ? `Date : ${scheduledDate}` : null,
     modeLabel,
+    payCurrencyEarly ? `Paiement : ${payCurrencyEarly.toUpperCase()}` : null,
     promoCodeUsed && discount > 0 ? `Code ${promoCodeUsed} : -${discount}€` : null,
     ``,
     `Sous-total : ${subtotal}€`,
@@ -216,9 +220,8 @@ async function placeOrderInner(input: PlaceOrderInput) {
     .filter(Boolean)
     .join("\n")
 
-  const trackingToken = parcelMode
-    ? `TRK_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
-    : `ORD_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
+  // Plus de token TRK_ sécurisé sur CaliDelivery — suivi classique ORD_
+  const trackingToken = `ORD_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
 
   const baseValues = {
     customerName: customerName || "Client",
@@ -269,47 +272,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     body: summary,
   })
 
-  if (parcelMode) {
-    const serviceLabel = parcelName || fulfillment
-    const trkBody = [
-      `⚠️ ATTENTION — LIS CE MESSAGE ATTENTIVEMENT ⚠️`,
-      ``,
-      `Ton token de suivi colis (${serviceLabel}) est :`,
-      ``,
-      `${trackingToken}`,
-      ``,
-      `SAUVEGARDE CE TOKEN MAINTENANT.`,
-      `Ce message sera automatiquement supprimé une fois que tu l'auras ouvert, pour des raisons de sécurité.`,
-      `Sans ce token tu ne pourras plus accéder au suivi de ta commande.`,
-    ].join("\n")
-
-    const [trkThread] = await db
-      .insert(orderThreads)
-      .values({
-        customerName: customerName || "Client",
-        customerToken,
-        trackingToken: `TRK_MSG_${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`,
-        summary: `Token de suivi — Commande #${thread.id}`,
-        total: 0,
-        shop,
-        fulfillment,
-        status: "trk_token",
-      })
-      .returning()
-
-    await db.insert(threadMessages).values({
-      threadId: trkThread.id,
-      sender: "vendeur",
-      body: trkBody,
-    })
-
-    await notifyCustomer(customerToken, {
-      title: "Token de suivi colis — À SAUVEGARDER",
-      body: "Ouvre la messagerie maintenant pour récupérer ton token de suivi. Il sera supprimé après lecture.",
-      url: "/",
-      tag: `trk-${thread.id}`,
-    })
-  } else {
+  if (!parcelMode) {
     await db.insert(threadMessages).values({
       threadId: thread.id,
       sender: "vendeur",
@@ -356,27 +319,24 @@ async function placeOrderInner(input: PlaceOrderInput) {
       console.error("[placeOrder] persist pay currency:", e)
     }
     try {
-      const bodyLines = [
-        `💳 Devise de paiement choisie : ${payCurrency.toUpperCase()}`,
-        ``,
-        `Total commande : ${total}€`,
-      ]
-      if (walletAddress) {
-        bodyLines.push(
-          ``,
-          `Adresse de réception (${payCurrency.toUpperCase()}) :`,
-          walletAddress,
-          ``,
-          `Envoie exactement le montant correspondant depuis ton portefeuille.`,
-          `Une fois le virement effectué, clique sur « J'ai fait le virement » dans le suivi de commande.`,
-        )
-      } else {
-        bodyLines.push(
-          ``,
-          `L'adresse de paiement sera communiquée ici sous peu par le vendeur.`,
-          `Règle uniquement depuis ton propre portefeuille, dans la devise indiquée.`,
-        )
-      }
+      const code = payCurrency.toUpperCase()
+      const bodyLines = walletAddress
+        ? [
+            `Voici l'adresse de notre wallet ${code}`,
+            ``,
+            walletAddress,
+            ``,
+            `Total à régler : ${total}€`,
+            ``,
+            `Envoie le paiement depuis ton portefeuille, puis clique sur « J'ai fait le virement » dans Mes commandes.`,
+          ]
+        : [
+            `Voici l'adresse de notre wallet ${code}`,
+            ``,
+            `(Adresse pas encore renseignée — le vendeur va te la communiquer ici.)`,
+            ``,
+            `Total à régler : ${total}€`,
+          ]
       await db.insert(threadMessages).values({
         threadId: thread.id,
         sender: "vendeur",
@@ -470,7 +430,11 @@ export async function updateOrderStatus(threadId: number, status: string) {
   await ensureOrderThreadsColumns()
   await db.update(orderThreads).set({ status, updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
 
+  // Fidélité colis : uniquement via confirmParcelReceived (client).
+  // Meet-up / livraison locale : crédit à la livraison admin comme avant.
+  const isParcel = isParcelFulfillment(thread[0].fulfillment)
   const becameDelivered =
+    !isParcel &&
     prev !== status &&
     (status === "livree" || status === "locker_livre") &&
     prev !== "livree" &&
@@ -479,12 +443,7 @@ export async function updateOrderStatus(threadId: number, status: string) {
   const label = statusMeta(status).label
 
   if (becameDelivered) {
-    const mode =
-      thread[0].fulfillment === "meetup"
-        ? "en meet-up"
-        : isParcelFulfillment(thread[0].fulfillment)
-          ? "en colis"
-          : "en livraison"
+    const mode = thread[0].fulfillment === "meetup" ? "en meet-up" : "en livraison"
     const points = computeLoyaltyPoints(thread[0].total ?? 0)
     const body1 =
       `✨ Ta commande t'a bien été livrée (${mode}). Merci pour ta confiance !` +
@@ -492,7 +451,8 @@ export async function updateOrderStatus(threadId: number, status: string) {
     await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body1 })
     const body2 = buildRatingInviteMessage(threadId)
     await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body2 })
-  } else if (prev !== status) {
+  } else if (prev !== status && status !== "locker_expedie") {
+    // locker_expedie a son propre message via markParcelShipped
     await db.insert(threadMessages).values({
       threadId,
       sender: "vendeur",
@@ -518,7 +478,7 @@ export async function updateOrderStatus(threadId: number, status: string) {
         url: "/",
         tag: `rate-${threadId}`,
       })
-    } else {
+    } else if (status !== "locker_expedie") {
       await notifyCustomer(thread[0].customerToken, {
         title: "Commande mise à jour",
         body: `Statut : ${label}`,

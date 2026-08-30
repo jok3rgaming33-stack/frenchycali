@@ -76,8 +76,9 @@ function toDTO(
   return {
     id: r.id,
     pseudo: isAdminAuthor ? "Admin" : r.pseudo,
-    favoriteShop: isAdminAuthor ? null : r.favoriteShop,
-    favoriteLabel: isAdminAuthor ? null : favoriteShopLabel(r.favoriteShop),
+    favoriteShop: r.favoriteShop,
+    // Toujours afficher la boutique / page d'origine à côté du pseudo
+    favoriteLabel: favoriteShopLabel(r.favoriteShop),
     isAdminAuthor,
     body: r.body ?? "",
     media: Array.isArray(r.media) ? r.media : [],
@@ -215,7 +216,8 @@ export async function postCommunityMessage(input: {
     }
   }
 
-  const favoriteShop = asAdmin ? null : normalizeFavorite(input.favoriteShop)
+  // Admin inclus : on conserve la page / boutique depuis laquelle il parle
+  const favoriteShop = normalizeFavorite(input.favoriteShop)
   const pseudo = asAdmin ? "Admin" : account?.pseudo || "Client"
 
   try {

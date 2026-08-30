@@ -11,8 +11,11 @@ import {
   consumeTrkThread,
   notifyDeposit,
   markThreadRead,
+  confirmParcelReceived,
+  reportParcelIssue,
 } from "@/app/actions/messaging"
-import { statusMeta, isClosedStatus } from "@/lib/order-status"
+import { statusMeta, isClosedStatus, parcelConcernUnlockAt } from "@/lib/order-status"
+import { isParcelFulfillment } from "@/lib/shops"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 import { BlobMedia } from "@/components/blob-media"
@@ -64,6 +67,8 @@ type Thread = {
   depositConfirmed?: boolean
   xmrWallet?: string | null
   paymentCrypto?: string | null
+  colissimoNumber?: string | null
+  shippedAt?: Date | string | null
   createdAt: Date | string
   updatedAt: Date | string
 }
@@ -104,9 +109,11 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
   // Notification push
   const [pushSupported, setPushSupported] = useState(false)
   const [pushGranted, setPushGranted] = useState(false)
-  // Depot XMR
+  // Depot / réception colis
   const [depositSending, setDepositSending] = useState(false)
   const [depositSent, setDepositSent] = useState(false)
+  const [receiveSending, setReceiveSending] = useState(false)
+  const [issueSending, setIssueSending] = useState(false)
 
   const selectedRef = useRef<number | null>(null)
   selectedRef.current = selected?.id ?? null
@@ -248,6 +255,38 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
     }
   }
 
+  const handleConfirmReceived = async () => {
+    if (!selected || !token || receiveSending) return
+    setReceiveSending(true)
+    try {
+      const res = await confirmParcelReceived(selected.id, token)
+      if (!res.ok) return
+      setSelected((s) => (s ? { ...s, status: "livree" } : s))
+      setThreads((prev) => prev.map((t) => (t.id === selected.id ? { ...t, status: "livree" } : t)))
+      const data = await getThread(selected.id)
+      if (data) setMessages(data.messages as Message[])
+    } finally {
+      setReceiveSending(false)
+    }
+  }
+
+  const handleReportIssue = async () => {
+    if (!selected || !token || issueSending) return
+    setIssueSending(true)
+    try {
+      const res = await reportParcelIssue(selected.id, token)
+      if (!res.ok) return
+      setSelected((s) => (s ? { ...s, status: "souci_livraison" } : s))
+      setThreads((prev) =>
+        prev.map((t) => (t.id === selected.id ? { ...t, status: "souci_livraison" } : t)),
+      )
+      const data = await getThread(selected.id)
+      if (data) setMessages(data.messages as Message[])
+    } finally {
+      setIssueSending(false)
+    }
+  }
+
   const handleLockerUnlock = () => {
     const input = lockerTokenInput.trim().toUpperCase()
     if (!input) { setLockerTokenError("Saisis ton token TRK_."); return }
@@ -293,10 +332,18 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
   const payCryptoLabel = (selected?.paymentCrypto || (isLockerSelected ? "xmr" : "") || "crypto").toUpperCase()
   const depositAlreadyNotified = selected?.depositNotified ?? false
   const depositAlreadyConfirmed = selected?.depositConfirmed ?? false
+  const isShippedParcel =
+    !!selected &&
+    isParcelFulfillment(selected.fulfillment) &&
+    (selected.status === "locker_expedie" || selected.status === "souci_livraison")
+  const concernUnlock = selected
+    ? parcelConcernUnlockAt(selected.shippedAt, selected.fulfillment)
+    : null
+  const concernEnabled = !!(concernUnlock && Date.now() >= concernUnlock.getTime())
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-background/90"
+      className="modal-overlay fixed inset-0 z-[100] flex items-end justify-center bg-background/90 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label="Mes commandes"
@@ -575,11 +622,57 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                 )}
               </div>
             )}
-            {showDepositZone && depositAlreadyConfirmed && (
+            {showDepositZone && depositAlreadyConfirmed && selected?.status === "preparation" && (
               <div className="border-t border-border p-4">
                 <div className="rounded-2xl border border-accent/40 bg-accent/10 px-4 py-3 text-center text-sm font-semibold text-accent">
                   Virement reçu — ta commande est en préparation.
                 </div>
+              </div>
+            )}
+
+            {/* Après expédition : réception / souci */}
+            {isShippedParcel && selected && (
+              <div className="border-t border-border p-4 space-y-3">
+                {selected.colissimoNumber && (
+                  <div className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-xs text-muted-foreground">
+                    N° de suivi :{" "}
+                    <span className="font-mono font-semibold text-foreground">{selected.colissimoNumber}</span>
+                  </div>
+                )}
+                {selected.status === "locker_expedie" && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmReceived}
+                    disabled={receiveSending}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {receiveSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    J&apos;ai bien reçu mon colis
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleReportIssue}
+                  disabled={!concernEnabled || issueSending || selected.status === "souci_livraison"}
+                  title={
+                    concernEnabled
+                      ? "Signaler un problème de livraison"
+                      : concernUnlock
+                        ? `Disponible à partir du ${concernUnlock.toLocaleDateString("fr-FR")}`
+                        : "Disponible après le délai transporteur"
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border py-3 text-sm font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed hover:bg-secondary"
+                >
+                  {issueSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {selected.status === "souci_livraison"
+                    ? "Souci déjà signalé — écris ci-dessous"
+                    : "J'ai un souci avec ma livraison"}
+                </button>
+                {!concernEnabled && concernUnlock && selected.status === "locker_expedie" && (
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
+                  </p>
+                )}
               </div>
             )}
 

@@ -431,7 +431,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
       <ParticlesCanvas theme={theme} />
 
       {/* ══ NAVBAR ══ */}
-      <header className="shop-layer" style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", backdropFilter:"blur(14px)" }}>
+      <header className="shop-layer shop-sticky-header" style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", backdropFilter:"blur(14px)" }}>
 
         {/* Top row: logo + mobile controls */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", maxWidth:1400, margin:"0 auto" }}>
@@ -520,7 +520,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
         {/* Mobile dropdown menu */}
         {mobileMenuOpen && (
-          <nav style={{ borderTop:`1px solid ${cardBorder}`, padding:"8px 0", background:isDelivery?"rgba(10,0,18,.98)":"rgba(15,13,7,.98)" }}>
+          <nav className="shop-mobile-menu" style={{ borderTop:`1px solid ${cardBorder}`, padding:"8px 0", background:isDelivery?"rgba(10,0,18,.98)":"rgba(15,13,7,.98)" }}>
             {navItems.map((item) => (
               <button key={item.label} onClick={item.action}
                 style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"14px 20px", background:"transparent", border:"none",
@@ -531,7 +531,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
             {isAdmin && (
               <>
                 <div style={{ height:1, background:cardBorder, margin:"6px 20px" }} />
-                <a href="/admin"
+                <a href={`/admin/${shop}`}
                   style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 20px",
                     color: isDelivery ? "#bf7fff" : "#4ade80", fontSize:14, fontWeight:700, textDecoration:"none", letterSpacing:"0.06em", textTransform:"uppercase" as const }}>
                   <Shield style={{ width:16, height:16 }} />PANEL ADMIN
@@ -568,7 +568,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
       )}
 
       {view === "shop" && (
-        <main className="shop-layer" style={{ position:"relative", zIndex:2, maxWidth:1200, margin:"0 auto", padding:"20px 16px 48px", width:"100%", boxSizing:"border-box" }}>
+        <main className="shop-layer shop-main-pad" style={{ position:"relative", zIndex:2, maxWidth:1200, margin:"0 auto", padding:"20px 16px 48px", width:"100%", boxSizing:"border-box" }}>
           {/* Filtres catégories — chips glass + gradient thème gold / delivery */}
           {sections.length > 0 && (
             <div
@@ -896,6 +896,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
         userToken={userToken}
         userPseudo={userPseudo}
         isAdmin={isAdmin}
+        shop={shop}
         accentColor={accentColor}
         primaryColor={primaryColor}
         cardBorder={cardBorder}

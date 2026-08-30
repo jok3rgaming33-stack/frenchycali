@@ -1010,6 +1010,150 @@ export async function confirmDeposit(threadId: number) {
   return { ok: true as const }
 }
 
+/** Admin : colis expédié + n° de suivi → message client + bouton réception. */
+export async function markParcelShipped(threadId: number, trackingNumber: string) {
+  if (!threadId) return { ok: false as const, error: "Commande invalide." }
+  const tracking = trackingNumber?.trim()
+  if (!tracking) return { ok: false as const, error: "Saisis le numéro de suivi." }
+
+  const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId))
+  if (!thread) return { ok: false as const, error: "Commande introuvable." }
+
+  await ensureOrderThreadsColumns()
+  const now = new Date()
+  await db
+    .update(orderThreads)
+    .set({
+      status: "locker_expedie",
+      colissimoNumber: tracking,
+      shippedAt: now,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(orderThreads.id, threadId))
+
+  const carrier = thread.fulfillment || "transporteur"
+  await db.insert(threadMessages).values({
+    threadId,
+    sender: "vendeur",
+    body: [
+      `📦 Colis expédié (${carrier})`,
+      ``,
+      `Numéro de suivi :`,
+      tracking,
+      ``,
+      `Quand tu auras reçu ton colis, ouvre Mes commandes et clique sur « J'ai bien reçu mon colis ».`,
+      `Sans cette validation, la commande reste en suspens et les points fidélité ne seront pas crédités.`,
+    ].join("\n"),
+  })
+
+  if (thread.customerToken) {
+    await notifyCustomer(thread.customerToken, {
+      title: `Colis expédié — #${threadId}`,
+      body: `Suivi : ${tracking}`,
+      url: "/",
+      tag: `ship-${threadId}`,
+    })
+  }
+
+  revalidatePath("/admin")
+  if (thread.shop && isShopId(thread.shop)) revalidatePath(`/admin/${thread.shop}`)
+  return { ok: true as const }
+}
+
+/**
+ * Client : confirme la réception du colis.
+ * → statut livree + crédit fidélité (uniquement à cette étape).
+ */
+export async function confirmParcelReceived(threadId: number, customerToken: string) {
+  const token = customerToken?.trim()
+  if (!threadId || !token) return { ok: false as const, error: "Session invalide." }
+
+  const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId))
+  if (!thread || thread.customerToken !== token) {
+    return { ok: false as const, error: "Commande introuvable." }
+  }
+  if (thread.status === "livree" || thread.status === "locker_livre") {
+    return { ok: true as const }
+  }
+  if (thread.status !== "locker_expedie") {
+    return { ok: false as const, error: "Le colis n'est pas encore marqué comme expédié." }
+  }
+
+  await db
+    .update(orderThreads)
+    .set({ status: "livree", updatedAt: sql`now()` })
+    .where(eq(orderThreads.id, threadId))
+
+  const points = computeLoyaltyPoints(thread.total ?? 0)
+  const body1 =
+    `✨ Merci ! Tu as confirmé la réception de ton colis.` +
+    (points > 0 ? `\n${points} point${points > 1 ? "s" : ""} de fidélité viennent d'être crédités.` : "")
+  await db.insert(threadMessages).values({ threadId, sender: "vendeur", body: body1 })
+  await db.insert(threadMessages).values({
+    threadId,
+    sender: "vendeur",
+    body: buildRatingInviteMessage(threadId),
+  })
+
+  await notifyCustomer(token, {
+    title: "Colis reçu — merci !",
+    body: body1.slice(0, 120),
+    url: "/",
+    tag: `received-${threadId}`,
+  })
+
+  await notifyVendor({
+    title: `Colis reçu — #${threadId}`,
+    body: `${thread.customerName} a confirmé la réception.`,
+    url: thread.shop && isShopId(thread.shop) ? `/admin/${thread.shop}` : "/admin",
+    tag: `received-admin-${threadId}`,
+  })
+
+  revalidatePath("/admin")
+  revalidatePath("/messagerie")
+  return { ok: true as const, points }
+}
+
+/** Client : ouvre un souci livraison (après délai transporteur) — message + notif admin. */
+export async function reportParcelIssue(threadId: number, customerToken: string) {
+  const token = customerToken?.trim()
+  if (!threadId || !token) return { ok: false as const, error: "Session invalide." }
+
+  const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId))
+  if (!thread || thread.customerToken !== token) {
+    return { ok: false as const, error: "Commande introuvable." }
+  }
+  if (thread.status !== "locker_expedie") {
+    return { ok: false as const, error: "Action indisponible pour cette commande." }
+  }
+
+  const { parcelConcernUnlockAt } = await import("@/lib/order-status")
+  const unlock = parcelConcernUnlockAt(thread.shippedAt, thread.fulfillment)
+  if (!unlock || Date.now() < unlock.getTime()) {
+    return { ok: false as const, error: "Ce bouton sera disponible après le délai du transporteur." }
+  }
+
+  await db.insert(threadMessages).values({
+    threadId,
+    sender: "client",
+    body: "⚠️ J'ai un souci avec ma livraison. Merci de m'aider.",
+  })
+  await db
+    .update(orderThreads)
+    .set({ status: "souci_livraison", updatedAt: sql`now()` })
+    .where(eq(orderThreads.id, threadId))
+
+  await notifyVendor({
+    title: `Souci livraison — #${threadId}`,
+    body: `${thread.customerName} signale un problème de livraison.`,
+    url: thread.shop && isShopId(thread.shop) ? `/admin/${thread.shop}` : "/admin",
+    tag: `issue-${threadId}`,
+  })
+
+  revalidatePath("/admin")
+  return { ok: true as const }
+}
+
 // Supprime définitivement une commande (et ses messages, via cascade applicative).
 export async function deleteOrderThread(threadId: number) {
   if (!threadId) return { ok: false as const }

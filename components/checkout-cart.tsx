@@ -407,7 +407,7 @@ export function CheckoutCart({
           </h2>
           <p style={{ margin: "0 0 12px", fontSize: 13, color: textMuted, lineHeight: 1.55 }}>
             {isParcel
-              ? "Commande colis — ouvre la messagerie pour sauvegarder ton token TRK_ (affiché une seule fois)."
+              ? "Commande colis enregistrée — suis le paiement et l'expédition depuis Mes commandes."
               : "Tu peux suivre ta commande et écrire au vendeur depuis Mes commandes."}
           </p>
           <p style={{ margin: "0 0 16px", fontSize: 11, color: "rgba(200,190,170,.5)", wordBreak: "break-all" }}>

@@ -248,7 +248,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-background/90"
+      className="modal-overlay fixed inset-0 z-[100] flex items-end justify-center bg-background/90 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label="Messagerie"

@@ -191,10 +191,11 @@ export const orderThreads = pgTable("order_threads", {
   lng: doublePrecision("lng"),
   scheduledDate: text("scheduled_date"),
   scheduledSlot: text("scheduled_slot"),
-  colissimoNumber: text("colissimo_number"), // Numéro de suivi Colissimo/transporteur
-  xmrWallet: text("xmr_wallet"),             // Adresse wallet XMR communiquée au client locker
-  depositNotified: boolean("deposit_notified").notNull().default(false),   // Client a cliqué "j'ai déposé"
-  depositConfirmed: boolean("deposit_confirmed").notNull().default(false),  // Admin a confirmé réception
+  colissimoNumber: text("colissimo_number"), // Numéro de suivi transporteur
+  xmrWallet: text("xmr_wallet"),             // Adresse wallet crypto communiquée au client
+  depositNotified: boolean("deposit_notified").notNull().default(false),   // Client : j'ai fait le virement
+  depositConfirmed: boolean("deposit_confirmed").notNull().default(false),  // Admin : virement reçu
+  shippedAt: timestamp("shipped_at", { withTimezone: true }),              // Date d'expédition (délai souci)
   clientLastSeen: timestamp("client_last_seen", { withTimezone: true }),    // Dernière ouverture du fil par le client
   status: text("status").notNull().default("nouveau"),
   // Paiement multi-crypto (NOWPayments) — nullable = commande sans gateway / legacy

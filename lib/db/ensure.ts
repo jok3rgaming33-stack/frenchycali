@@ -24,6 +24,7 @@ const ORDER_THREAD_COLUMNS = [
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_pay_url TEXT`,
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS shop TEXT`,
+  `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ`,
 ] as const
 
 const ADMIN_ACCOUNT_COLUMNS = [

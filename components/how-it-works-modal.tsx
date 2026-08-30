@@ -247,7 +247,7 @@ export function HowItWorksModal({ isOpen, onClose, requireRead = false, onConfir
 
   return (
     <div
-      className="modal-overlay fixed inset-0 z-[110] flex items-center justify-center bg-background/85 backdrop-blur-sm"
+      className="modal-overlay fixed inset-0 z-[110] flex items-end justify-center bg-background/85 backdrop-blur-sm sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label="Comment ça marche"

@@ -21,15 +21,31 @@ export const VENDOR_DISCUSSION_STATUS_OPTIONS = [
   "ferme",
 ] as const
 
+/** Delivery colis : le flux avance par boutons ; le select ne sert qu'à l'annulation. */
 export const VENDOR_LOCKER_STATUS_OPTIONS = [
-  "en_attente",
-  "validee",
-  "preparation",
-  "locker_paiement_recu",
-  "locker_expedie",
-  "locker_livre",
   "annulee",
 ] as const
+
+/** Délai (jours) avant activation du bouton « souci livraison », selon transporteur. */
+export function parcelConcernDelayDays(fulfillment: string | null | undefined): number {
+  const f = (fulfillment ?? "").toLowerCase()
+  if (f.includes("chrono")) return 2
+  if (f.includes("colissimo")) return 4
+  if (f.includes("mondial") || f.includes("relay")) return 6
+  if (f.includes("ups")) return 5
+  return 4
+}
+
+export function parcelConcernUnlockAt(
+  shippedAt: Date | string | null | undefined,
+  fulfillment: string | null | undefined,
+): Date | null {
+  if (!shippedAt) return null
+  const d = new Date(shippedAt)
+  if (Number.isNaN(d.getTime())) return null
+  d.setDate(d.getDate() + parcelConcernDelayDays(fulfillment))
+  return d
+}
 
 export type OrderStatusKey =
   | "discussion"
@@ -48,6 +64,7 @@ export type OrderStatusKey =
   | "locker_paiement_recu"
   | "locker_expedie"
   | "locker_livre"
+  | "souci_livraison"
 
 type StatusMeta = {
   label: string
@@ -129,14 +146,19 @@ export const STATUS_META: Record<string, StatusMeta> = {
     accent: "text-sky-400",
   },
   locker_expedie: {
-    label: "Locker — expédié",
+    label: "Colis expédié",
     badge: "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30",
     accent: "text-indigo-300",
   },
   locker_livre: {
-    label: "Locker livré",
+    label: "Colis reçu",
     badge: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
     accent: "text-emerald-400",
+  },
+  souci_livraison: {
+    label: "Souci livraison",
+    badge: "bg-rose-500/15 text-rose-300 border border-rose-500/30",
+    accent: "text-rose-300",
   },
 }
 
