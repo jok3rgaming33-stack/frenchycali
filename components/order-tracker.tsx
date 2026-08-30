@@ -197,6 +197,125 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
             </p>
           </div>
 
+          {/* Actions cycle colis — sous le header, toujours visibles avant les messages */}
+          {showDeposit && (
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10, background: `${accentColor}10` }}>
+              {wallet && (
+                <div
+                  style={{
+                    borderRadius: 14,
+                    border: `1px solid ${accentColor}55`,
+                    background: `${accentColor}12`,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: accentColor, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    Adresse {payLabel}
+                  </p>
+                  <p style={{ margin: 0, fontFamily: "monospace", fontSize: 12, color: textMain, wordBreak: "break-all" }}>
+                    {wallet}
+                  </p>
+                </div>
+              )}
+              {!depositNotified ? (
+                <button
+                  type="button"
+                  onClick={handleDeposit}
+                  disabled={depositSending}
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: accentColor,
+                    color: "#000",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    opacity: depositSending ? 0.6 : 1,
+                  }}
+                >
+                  {depositSending ? "Envoi…" : "J'ai fait le virement"}
+                </button>
+              ) : (
+                <p style={{ margin: 0, textAlign: "center", fontSize: 12, color: textMuted }}>
+                  Virement signalé — en attente de confirmation vendeur.
+                </p>
+              )}
+            </div>
+          )}
+
+          {showPrepBanner && (
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}`, textAlign: "center", fontSize: 13, fontWeight: 700, color: accentColor, background: `${accentColor}10` }}>
+              Virement reçu — commande en préparation
+            </div>
+          )}
+
+          {isShipped && (
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10, background: `${accentColor}12` }}>
+              {tracking && (
+                <p style={{ margin: 0, fontSize: 12, color: textMuted }}>
+                  N° de suivi :{" "}
+                  <strong style={{ color: textMain, fontFamily: "monospace" }}>{tracking}</strong>
+                </p>
+              )}
+              {showReceive && (
+                <button
+                  type="button"
+                  onClick={handleConfirmReceived}
+                  disabled={receiveSending}
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: accentColor,
+                    color: "#000",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    opacity: receiveSending ? 0.6 : 1,
+                  }}
+                >
+                  {receiveSending ? "Validation…" : "J'ai bien reçu mon colis"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleReportIssue}
+                disabled={!concernEnabled || issueSending || selected.status === "souci_livraison"}
+                title={
+                  concernEnabled
+                    ? "Signaler un problème"
+                    : concernUnlock
+                      ? `Disponible le ${concernUnlock.toLocaleDateString("fr-FR")}`
+                      : "Disponible après le délai transporteur"
+                }
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  borderRadius: 999,
+                  border: `1px solid ${cardBorder}`,
+                  background: "transparent",
+                  color: textMain,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: concernEnabled ? "pointer" : "not-allowed",
+                  opacity: !concernEnabled || selected.status === "souci_livraison" ? 0.4 : 1,
+                }}
+              >
+                {selected.status === "souci_livraison"
+                  ? "Souci déjà signalé — écris ci-dessous"
+                  : "J'ai un souci avec ma livraison"}
+              </button>
+              {!concernEnabled && concernUnlock && selected.status === "locker_expedie" && (
+                <p style={{ margin: 0, textAlign: "center", fontSize: 11, color: textMuted }}>
+                  Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
+                </p>
+              )}
+            </div>
+          )}
+
           <div
             style={{
               display: "flex",
@@ -244,127 +363,6 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
               </div>
             ))}
           </div>
-
-          {/* Étape 1 : virement crypto */}
-          {showDeposit && (
-            <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10 }}>
-              {wallet && (
-                <div
-                  style={{
-                    borderRadius: 14,
-                    border: `1px solid ${accentColor}55`,
-                    background: `${accentColor}12`,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: accentColor, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                    Adresse {payLabel}
-                  </p>
-                  <p style={{ margin: 0, fontFamily: "monospace", fontSize: 12, color: textMain, wordBreak: "break-all" }}>
-                    {wallet}
-                  </p>
-                </div>
-              )}
-              {!depositNotified ? (
-                <button
-                  type="button"
-                  onClick={handleDeposit}
-                  disabled={depositSending}
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: 999,
-                    border: "none",
-                    background: accentColor,
-                    color: "#000",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    cursor: "pointer",
-                    opacity: depositSending ? 0.6 : 1,
-                  }}
-                >
-                  {depositSending ? "Envoi…" : "J'ai fait le virement"}
-                </button>
-              ) : (
-                <p style={{ margin: 0, textAlign: "center", fontSize: 12, color: textMuted }}>
-                  Virement signalé — en attente de confirmation vendeur.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Étape 2 : préparation */}
-          {showPrepBanner && (
-            <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, textAlign: "center", fontSize: 13, fontWeight: 700, color: accentColor }}>
-              Virement reçu — commande en préparation
-            </div>
-          )}
-
-          {/* Étape 3 : réception / souci */}
-          {isShipped && (
-            <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10 }}>
-              {tracking && (
-                <p style={{ margin: 0, fontSize: 12, color: textMuted }}>
-                  N° de suivi :{" "}
-                  <strong style={{ color: textMain, fontFamily: "monospace" }}>{tracking}</strong>
-                </p>
-              )}
-              {showReceive && (
-                <button
-                  type="button"
-                  onClick={handleConfirmReceived}
-                  disabled={receiveSending}
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: 999,
-                    border: "none",
-                    background: accentColor,
-                    color: "#000",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    cursor: "pointer",
-                    opacity: receiveSending ? 0.6 : 1,
-                  }}
-                >
-                  {receiveSending ? "Validation…" : "J'ai bien reçu mon colis"}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleReportIssue}
-                disabled={!concernEnabled || issueSending || selected.status === "souci_livraison"}
-                title={
-                  concernEnabled
-                    ? "Signaler un problème"
-                    : concernUnlock
-                      ? `Disponible le ${concernUnlock.toLocaleDateString("fr-FR")}`
-                      : "Disponible après le délai transporteur"
-                }
-                style={{
-                  width: "100%",
-                  padding: "12px 16px",
-                  borderRadius: 999,
-                  border: `1px solid ${cardBorder}`,
-                  background: "transparent",
-                  color: textMain,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: concernEnabled ? "pointer" : "not-allowed",
-                  opacity: !concernEnabled || selected.status === "souci_livraison" ? 0.4 : 1,
-                }}
-              >
-                {selected.status === "souci_livraison"
-                  ? "Souci déjà signalé — écris ci-dessous"
-                  : "J'ai un souci avec ma livraison"}
-              </button>
-              {!concernEnabled && concernUnlock && selected.status === "locker_expedie" && (
-                <p style={{ margin: 0, textAlign: "center", fontSize: 11, color: textMuted }}>
-                  Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
-                </p>
-              )}
-            </div>
-          )}
 
           <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", gap: 8 }}>
             <input

@@ -57,6 +57,10 @@ export function paymentCryptoFromSummary(summary: string | null | undefined): st
 /**
  * Visibilité des actions client sur une commande colis.
  * Source unique pour OrderTracker + MyOrdersModal.
+ *
+ * Règle durcie : le statut pipeline colis (locker_expedie / souci / …)
+ * suffit à afficher les boutons — on ne dépend plus uniquement de fulfillment
+ * (qui peut être vide / legacy / mal renseigné alors que le colis est parti).
  */
 export function getParcelClientActions(order: {
   fulfillment?: string | null
@@ -68,31 +72,60 @@ export function getParcelClientActions(order: {
   shippedAt?: Date | string | null
   summary?: string | null
   colissimoNumber?: string | null
+  shop?: string | null
 }) {
-  const fulfillment = order.fulfillment ?? ""
+  const fulfillment = (order.fulfillment ?? "").trim()
   const status = normalizeStatus(order.status)
   const pay =
     (order.paymentCrypto || paymentCryptoFromSummary(order.summary) || "").toLowerCase() || null
-  const isParcel =
+
+  const fulfillmentIsParcel =
+    fulfillment.length > 0 &&
     fulfillment !== "meetup" &&
-    fulfillment !== "livraison" &&
-    fulfillment.trim().length > 0
+    fulfillment !== "livraison"
+
+  // Statuts exclusifs au flux colis → on force le mode parcel
+  const statusIsParcelPipeline =
+    status === "locker_expedie" ||
+    status === "souci_livraison" ||
+    status === "locker_livre" ||
+    status === "locker_en_attente_paiement" ||
+    status === "locker_paiement_recu"
+
+  const looksLikeDeliveryShop =
+    (order.shop ?? "").toLowerCase() === "calidelivery" ||
+    /\[calidelivery\]/i.test(order.summary ?? "") ||
+    /\b(chronopost|colissimo|mondial\s*relay|ups)\b/i.test(order.summary ?? "")
+
+  const isParcel =
+    fulfillmentIsParcel ||
+    statusIsParcelPipeline ||
+    !!(pay && looksLikeDeliveryShop) ||
+    !!(order.colissimoNumber?.trim() && fulfillment !== "meetup")
+
+  // Fin de cycle : UNIQUEMENT le statut compte (plus de gate isParcel)
+  const isShipped = status === "locker_expedie" || status === "souci_livraison"
 
   const awaitingPayment =
     isParcel &&
     !order.depositConfirmed &&
-    status !== "locker_expedie" &&
-    status !== "souci_livraison" &&
+    !isShipped &&
     status !== "livree" &&
     status !== "locker_livre" &&
     status !== "annulee" &&
     status !== "preparation"
 
-  const showDeposit = awaitingPayment || (isParcel && !!order.depositNotified && !order.depositConfirmed)
+  const showDeposit =
+    awaitingPayment || (isParcel && !!order.depositNotified && !order.depositConfirmed && !isShipped)
   const showPrepBanner = isParcel && !!order.depositConfirmed && status === "preparation"
-  const isShipped = isParcel && (status === "locker_expedie" || status === "souci_livraison")
-  const concernUnlock = parcelConcernUnlockAt(order.shippedAt, fulfillment)
-  const concernEnabled = !!(concernUnlock && Date.now() >= concernUnlock.getTime())
+
+  // shippedAt manquant (anciennes commandes) → débloquer le souci immédiatement
+  const concernUnlock = order.shippedAt
+    ? parcelConcernUnlockAt(order.shippedAt, fulfillment)
+    : isShipped
+      ? new Date(0)
+      : null
+  const concernEnabled = isShipped && (!!concernUnlock && Date.now() >= concernUnlock.getTime())
 
   return {
     isParcel,
@@ -102,9 +135,9 @@ export function getParcelClientActions(order: {
     showDeposit,
     showPrepBanner,
     isShipped,
-    showReceive: isShipped && status === "locker_expedie",
+    showReceive: status === "locker_expedie",
     showIssue: isShipped,
-    concernUnlock,
+    concernUnlock: order.shippedAt ? concernUnlock : null,
     concernEnabled,
     tracking: order.colissimoNumber?.trim() || null,
     depositNotified: !!order.depositNotified,

@@ -1,5 +1,6 @@
 // Service Worker LaCentral — push + installabilité PWA.
 // Ne pas intercepter les POST (Server Actions / /api/orders) : ça casse le checkout mobile.
+// cache-bust: 2026-08-30-parcel-actions
 
 self.addEventListener("install", (event) => {
   self.skipWaiting()

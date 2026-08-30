@@ -296,6 +296,7 @@ export async function getDiscussions(shop?: ShopId) {
 
 // Détail d'un fil avec tous ses messages (ordre chronologique)
 export async function getThread(id: number) {
+  await ensureOrderThreadsColumns()
   const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, id))
   if (!thread) return null
   const messages = await db
@@ -501,6 +502,7 @@ export async function getLockerOrdersForToken(customerToken: string) {
 export async function getThreadsForToken(customerToken: string) {
   const token = customerToken?.trim()
   if (!token) return []
+  await ensureOrderThreadsColumns()
   return db
     .select()
     .from(orderThreads)

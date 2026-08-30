@@ -62,6 +62,7 @@ type Thread = {
   scheduledSlot: string | null
   status: string
   trackingToken: string
+  shop?: string | null
   depositNotified?: boolean
   depositConfirmed?: boolean
   xmrWallet?: string | null
@@ -358,18 +359,25 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                 <ArrowLeft className="h-5 w-5" aria-hidden="true" />
               </button>
             )}
-            <h2 className="text-xl font-bold">
-              {selected
-                ? isTrkSelected
-                  ? "Token de suivi"
-                  : `Commande #${selected.id}`
-                : "Mes commandes"}
-            </h2>
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold truncate">
+                {selected
+                  ? isTrkSelected
+                    ? "Token de suivi"
+                    : `Commande #${selected.id}`
+                  : "Mes commandes"}
+              </h2>
+              {selected && !isTrkSelected && (
+                <span className={`mt-1 inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusMeta(selected.status).badge}`}>
+                  {statusMeta(selected.status).label}
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"
             onClick={handleClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-secondary-foreground transition-colors hover:bg-muted"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-secondary-foreground transition-colors hover:bg-muted"
             aria-label="Fermer"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -543,12 +551,12 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
           </div>
         )}
 
-        {/* Détail d'un fil */}
+        {/* Détail d'un fil — colonne flex pour que les actions restent visibles (pas clipées) */}
         {selected && (
-          <>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* Avertissement TRK */}
             {isTrkSelected && (
-              <div className="mx-4 mt-4 rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4">
+              <div className="mx-4 mt-4 shrink-0 rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <ShieldAlert className="h-5 w-5 shrink-0 text-amber-400" aria-hidden="true" />
                   <p className="text-sm font-bold text-amber-400">SAUVEGARDE CE TOKEN MAINTENANT</p>
@@ -559,7 +567,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
               {loadingThread ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -587,6 +595,8 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
               )}
             </div>
 
+            {/* Pied d'actions : shrink-0 pour ne jamais disparaître sous overflow:hidden */}
+            <div className="shrink-0">
             {/* Zone paiement crypto / dépôt (adresse + bouton virement) */}
             {showDepositZone && !depositAlreadyConfirmed && (
               <div className="border-t border-border p-4 space-y-3">
@@ -626,9 +636,9 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
               </div>
             )}
 
-            {/* Après expédition : réception / souci */}
+            {/* Après expédition : réception / souci — toujours visible */}
             {isShippedParcel && selected && (
-              <div className="border-t border-border p-4 space-y-3">
+              <div className="border-t border-accent/40 bg-accent/5 p-4 space-y-3">
                 {trackingNumber && (
                   <div className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-xs text-muted-foreground">
                     N° de suivi :{" "}
@@ -640,7 +650,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                     type="button"
                     onClick={handleConfirmReceived}
                     disabled={receiveSending}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-sm font-bold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {receiveSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     J&apos;ai bien reçu mon colis
@@ -747,7 +757,8 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                 )}
               </div>
             )}
-          </>
+            </div>
+          </div>
         )}
       </div>
 
