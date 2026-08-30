@@ -518,10 +518,30 @@ export async function updateOrderStatus(threadId: number, status: string) {
   return { ok: true as const }
 }
 
-export async function listAllOrders() {
+export async function listAllOrders(shop?: ShopId) {
   if (!(await isAdminAuthenticated())) return []
   await ensureOrderThreadsColumns()
-  return db.select().from(orderThreads).orderBy(desc(orderThreads.createdAt))
+  if (!shop) {
+    return db.select().from(orderThreads).orderBy(desc(orderThreads.createdAt))
+  }
+  // Même logique de scope que le panel admin (shop + legacy summary / colis)
+  const { getThreads, getActiveOrders, getParcelOrders, getPastOrders, getDiscussions } = await import(
+    "@/app/actions/messaging"
+  )
+  const [active, parcels, past, discussions, recap] = await Promise.all([
+    getActiveOrders(shop),
+    getParcelOrders(shop),
+    getPastOrders(shop),
+    getDiscussions(shop),
+    getThreads(shop),
+  ])
+  const byId = new Map<number, (typeof active)[number]>()
+  for (const t of [...active, ...parcels, ...past, ...discussions, ...recap]) {
+    byId.set(t.id, t)
+  }
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )
 }
 
 export async function updateClientLastSeen(trackingToken: string) {

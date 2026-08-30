@@ -313,7 +313,12 @@ export function AdminPanel({
 
         {tab === "commandes-en-cours" ? (
           <VendorInbox
-            initialThreads={isDeliveryShop(shop) ? initialLockerOrders : initialActiveOrders}
+            shop={shop}
+            initialThreads={
+              isDeliveryShop(shop)
+                ? (initialLockerOrders.length ? initialLockerOrders : initialActiveOrders)
+                : initialActiveOrders
+            }
             mode={isDeliveryShop(shop) ? "locker" : "orders"}
           />
         ) : tab === "locker" ? (
@@ -325,9 +330,9 @@ export function AdminPanel({
             </p>
           </div>
         ) : tab === "cloturees" ? (
-          <VendorInbox initialThreads={initialPastOrders} mode="past" />
+          <VendorInbox shop={shop} initialThreads={initialPastOrders} mode="past" />
         ) : tab === "messagerie" ? (
-          <VendorInbox initialThreads={initialDiscussions} mode="messages" initialThreadId={focusThreadId} />
+          <VendorInbox shop={shop} initialThreads={initialDiscussions} mode="messages" initialThreadId={focusThreadId} />
         ) : tab === "commandes" ? (
           <AdminOrdersRecap threads={initialThreads} />
         ) : tab === "utilisateurs" ? (

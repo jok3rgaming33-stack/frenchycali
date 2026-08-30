@@ -12,12 +12,15 @@ import {
 import { listAllOrders, updateOrderStatus, sendAdminMessage, getThreadMessages } from "@/app/actions/order"
 import { MessageBody } from "@/components/message-body"
 import { Send, RefreshCw } from "lucide-react"
+import { isParcelFulfillment, type ShopId } from "@/lib/shops"
 
 interface Props {
   initialThreads: OrderThread[]
   mode: "orders" | "locker" | "past" | "messages"
   /** Ouvre automatiquement ce fil (ex. récupération clé perdue). */
   initialThreadId?: number | null
+  /** Filtre boutique (panels indépendants). */
+  shop?: ShopId
 }
 
 const ACCENT = "#ffca28"
@@ -27,7 +30,7 @@ const BG_CARD = "rgba(20,18,12,.88)"
 const ORDER_STATUSES = [...VENDOR_STATUS_OPTIONS]
 const LOCKER_STATUSES = [...VENDOR_LOCKER_STATUS_OPTIONS]
 
-export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Props) {
+export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop }: Props) {
   const [threads, setThreads] = useState<OrderThread[]>(initialThreads)
   const [selected, setSelected] = useState<OrderThread | null>(() => {
     if (initialThreadId == null) return null
@@ -41,9 +44,14 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
   const [searchTerm, setSearchTerm] = useState("")
   const msgEndRef = useRef<HTMLDivElement>(null)
 
+  // Sync si le serveur renvoie de nouvelles commandes (navigation / revalidate)
+  useEffect(() => {
+    setThreads(initialThreads)
+  }, [initialThreads])
+
   const refresh = async () => {
     setLoading(true)
-    try { setThreads(await listAllOrders()) } catch {} finally { setLoading(false) }
+    try { setThreads(await listAllOrders(shop)) } catch {} finally { setLoading(false) }
   }
 
   const loadMsgs = async (threadId: number) => {
@@ -90,14 +98,15 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null }: Pr
   }
 
   const statusOptions =
-    selected?.fulfillment === "locker" || mode === "locker" ? LOCKER_STATUSES : ORDER_STATUSES
+    isParcelFulfillment(selected?.fulfillment) || mode === "locker" ? LOCKER_STATUSES : ORDER_STATUSES
 
   const filtered = threads.filter((t) => {
     const matchSearch = !searchTerm || t.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || t.summary.toLowerCase().includes(searchTerm.toLowerCase()) || (t.products ?? "").toLowerCase().includes(searchTerm.toLowerCase()) || t.trackingToken.includes(searchTerm)
     if (!matchSearch) return false
     if (t.status === "trk_token") return mode === "messages"
-    if (mode === "orders") return t.fulfillment !== "locker" && !isClosedStatus(t.status)
-    if (mode === "locker") return t.fulfillment === "locker" && !isClosedStatus(t.status)
+    // mode locker = tous les colis (mondial_relay, chronopost, legacy locker…)
+    if (mode === "orders") return !isParcelFulfillment(t.fulfillment) && !isClosedStatus(t.status)
+    if (mode === "locker") return isParcelFulfillment(t.fulfillment) && !isClosedStatus(t.status)
     if (mode === "past") return isClosedStatus(t.status)
     return true
   })
