@@ -20,6 +20,7 @@ import {
   biometryLabel, clearLocalWebAuthn, getLocalCredentialIds,
   hasLocalWebAuthn, platformAuthenticatorAvailable, rememberLocalCredential,
 } from "@/lib/webauthn-client"
+import { getShopTheme } from "@/lib/shop-theme"
 
 const HOW_IT_WORKS_KEY = "howItWorksAccepted"
 
@@ -32,23 +33,19 @@ type LostKeyStep = "form" | "key" | "kyc" | "done"
 
 export function LoginPage({ onSuccess, shop }: Props) {
   const isDelivery = shop === "calidelivery"
+  const theme = getShopTheme(shop)
 
   // Theme-aware style helpers
-  const accentGrad = isDelivery
-    ? "linear-gradient(90deg,#8b00ff,#00ff9d)"
-    : "linear-gradient(90deg,#ffca28,#e65100)"
-  const btnStyle: React.CSSProperties = isDelivery
-    ? { background: "linear-gradient(120deg,#8b00ff,#00ff9d)", color: "#000814" }
-    : { background: "linear-gradient(120deg,#ffca28,#e65100)", color: "#0f0d07" }
-  const cardBorder = isDelivery
-    ? "1px solid rgba(0,255,170,0.18)"
-    : "1px solid rgba(255,202,40,0.18)"
-  const cardShadow = isDelivery
-    ? "0 0 35px rgba(0,255,170,0.35),0 32px 80px rgba(0,0,0,0.85)"
-    : "0 0 35px rgba(255,202,40,0.3),0 32px 80px rgba(0,0,0,0.85)"
-  const cardBg = isDelivery ? "#12001f" : "rgba(20,18,12,0.92)"
-  const inputBorder = isDelivery ? "rgba(0,255,170,0.2)" : "rgba(255,202,40,0.18)"
-  const inputFocusBorder = isDelivery ? "#00ff9d" : "#ffca28"
+  const accentGrad = theme.accentGrad
+  const btnStyle: React.CSSProperties = {
+    background: theme.btnGrad,
+    color: theme.chipActiveText,
+  }
+  const cardBorder = `1px solid ${theme.cardBorder}`
+  const cardShadow = theme.cardShadow
+  const cardBg = theme.cardBg
+  const inputBorder = theme.inputBorder
+  const inputFocusBorder = theme.inputFocus
 
   // States
   const [tab, setTab] = useState<"create" | "login">("create")
@@ -336,8 +333,8 @@ export function LoginPage({ onSuccess, shop }: Props) {
     getCustomerStats(token).then(setStats).catch(() => {})
   }, [isLoggedIn])
 
-  const logo = isDelivery ? "https://i.imgur.com/K6NwuvJ.png" : "https://i.imgur.com/1gye7hI.jpeg"
-  const shopLabel = shop === "caliboyz31" ? "LaCentral 31" : shop === "caliboyz94" ? "LaCentral IDF" : "CaliDelivery"
+  const logo = theme.logo
+  const shopLabel = theme.label
 
   // --- SUCCESS MODAL (key display) ---
   if (showResultModal) return (
@@ -500,7 +497,7 @@ export function LoginPage({ onSuccess, shop }: Props) {
           </div>
         )}
         <div style={{ marginTop: 18 }}>
-          <AddToHomeScreen accent={isDelivery ? "#00ff9d" : "#ffca28"} compact />
+          <AddToHomeScreen accent={theme.accent} compact />
         </div>
       </div>
 

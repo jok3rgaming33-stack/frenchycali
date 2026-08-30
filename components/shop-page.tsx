@@ -8,7 +8,7 @@ import type { Product } from "@/lib/db/schema"
 const FAVORITE_KEY = "favoriteUniverse"
 const PLUG_OPTIONS = [
   { key: "caliboyz31" as const, label: "LaCentral 31", border: "#ffca28" },
-  { key: "caliboyz94" as const, label: "LaCentral IDF", border: "#e65100" },
+  { key: "caliboyz94" as const, label: "LaCentral IDF", border: "#60a5fa" },
   { key: "calidelivery" as const, label: "CaliDelivery", border: "#8b00ff" },
 ]
 type PlugKey = (typeof PLUG_OPTIONS)[number]["key"]
@@ -38,6 +38,7 @@ import { resolveBadges } from "@/lib/badges"
 import { getProductRatingSummaries, type ProductRatingSummary } from "@/app/actions/ratings"
 import { CommunityChatModal } from "@/components/community-chat-modal"
 import { AddToHomeScreen } from "@/components/add-to-home-screen"
+import { getShopTheme } from "@/lib/shop-theme"
 
 type Shop = "caliboyz31" | "caliboyz94" | "calidelivery"
 
@@ -51,20 +52,19 @@ type CartItem = { productId: number; title: string; variant: string; price: numb
 export function ShopPage({ shop, initialProducts }: Props) {
   const router = useRouter()
   const isDelivery = shop === "calidelivery"
-  const theme = isDelivery ? "delivery" : "gold"
+  const t = getShopTheme(shop)
+  const theme = t.particle
 
-  // Theme styles
-  const accentColor = isDelivery ? "#00ff9d" : "#ffca28"
-  const primaryColor = isDelivery ? "#8b00ff" : "#e65100"
-  const bgMain = isDelivery ? "#0a0012" : "#0f0d07"
-  const bgGrad = isDelivery
-    ? "radial-gradient(circle at top left,rgba(139,0,255,.32),transparent 60%),radial-gradient(circle at bottom right,rgba(0,255,157,.35),transparent 60%)"
-    : "radial-gradient(circle at top right,rgba(255,202,40,.09),transparent 60%),radial-gradient(circle at bottom left,rgba(230,81,0,.07),transparent 60%)"
-  const cardBorder = isDelivery ? "rgba(0,255,170,.14)" : "rgba(255,202,40,.14)"
-  const glowColor = isDelivery ? "rgba(0,255,170,.35)" : "rgba(255,202,40,.35)"
+  // Theme styles (par boutique)
+  const accentColor = t.accent
+  const primaryColor = t.primary
+  const bgMain = t.bgMain
+  const bgGrad = t.bgGrad
+  const cardBorder = t.cardBorder
+  const glowColor = t.glow
 
-  const shopLabel = shop === "caliboyz31" ? "LaCentral 31" : shop === "caliboyz94" ? "LaCentral IDF" : "CaliDelivery"
-  const logo = isDelivery ? "https://i.imgur.com/K6NwuvJ.png" : "https://i.imgur.com/1gye7hI.jpeg"
+  const shopLabel = t.label
+  const logo = t.logo
 
   // Auth
   const [authed, setAuthed] = useState(false)
@@ -305,7 +305,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
   if (previewBooting) {
     return (
-      <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, display:"flex", alignItems:"center", justifyContent:"center", color: isDelivery ? "#f0f8ff" : "#f5e8c7" }}>
+      <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, display:"flex", alignItems:"center", justifyContent:"center", color: t.text }}>
         <ParticlesCanvas theme={theme} />
         <p style={{ position:"relative", zIndex:2, fontSize:14, letterSpacing:"0.12em", textTransform:"uppercase" as const }}>
           Ouverture aperçu admin…
@@ -316,7 +316,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
   if (previewError) {
     return (
-      <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, color: isDelivery ? "#f0f8ff" : "#f5e8c7", padding:24 }}>
+      <div style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, color: t.text, padding:24 }}>
         <ParticlesCanvas theme={theme} />
         <p style={{ position:"relative", zIndex:2, maxWidth:360, textAlign:"center", fontSize:14 }}>{previewError}</p>
         <a href="/admin" style={{ position:"relative", zIndex:2, color: accentColor, fontWeight:700 }}>← Retour panel admin</a>
@@ -354,13 +354,13 @@ export function ShopPage({ shop, initialProducts }: Props) {
   return (
     <NotificationsProvider>
     <CartProvider>
-    <div className={isDelivery ? "theme-delivery" : undefined} style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, color: isDelivery ? "#f0f8ff" : "#f5e8c7", fontFamily:"Inter,system-ui,sans-serif", position:"relative", isolation:"isolate" }}>
+    <div className={t.cssClass} style={{ minHeight:"100vh", background:`${bgGrad},${bgMain}`, color: t.text, fontFamily:"Inter,system-ui,sans-serif", position:"relative", isolation:"isolate" }}>
       <AppBadgeSync />
       <RecoveryBanner token={userToken} onOpenMessaging={() => setMsgOpen(true)} />
       {previewMode && (
         <div style={{
           position:"relative", zIndex:60, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:10,
-          padding:"10px 16px", background: isDelivery ? "rgba(139,0,255,.92)" : "rgba(230,81,0,.92)", color:"#fff", fontSize:12, fontWeight:600,
+          padding:"10px 16px", background: t.previewBarBg, color:"#fff", fontSize:12, fontWeight:600,
         }}>
           <span>
             Mode aperçu admin — {shopLabel} · catalogue live (maj auto)
@@ -431,7 +431,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
       <ParticlesCanvas theme={theme} />
 
       {/* ══ NAVBAR ══ */}
-      <header className="shop-layer shop-sticky-header" style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background:isDelivery?"rgba(10,0,18,.96)":"rgba(15,13,7,.96)", backdropFilter:"blur(14px)" }}>
+      <header className="shop-layer shop-sticky-header" style={{ position:"sticky", top:0, zIndex:40, borderBottom:`1px solid ${cardBorder}`, background: t.headerBg, backdropFilter:"blur(14px)" }}>
 
         {/* Top row: logo + mobile controls */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", maxWidth:1400, margin:"0 auto" }}>
@@ -474,9 +474,9 @@ export function ShopPage({ shop, initialProducts }: Props) {
             )}
             {/* Panier */}
             <button onClick={() => { setView("cart"); setMobileMenuOpen(false) }}
-              style={{ position:"relative", display:"flex", alignItems:"center", gap:6, background:cartCount>0?`rgba(${isDelivery?"0,255,157":"255,202,40"},.14)`:"transparent",
+              style={{ position:"relative", display:"flex", alignItems:"center", gap:6, background:cartCount>0?`rgba(${t.accentRgb},.14)`:"transparent",
                 border:`1px solid ${cartCount>0?accentColor:cardBorder}`, borderRadius:999, padding:"6px 14px", cursor:"pointer",
-                color:cartCount>0?accentColor:"rgba(200,190,170,.7)", fontSize:12, fontWeight:700 }}>
+                color:cartCount>0?accentColor:t.textMuted, fontSize:12, fontWeight:700 }}>
               <ShoppingCart style={{ width:14, height:14 }} />
               <span>MON PANIER</span>
               {cartCount > 0 && (
@@ -489,7 +489,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
           {/* Mobile right cluster */}
           <div style={{ display:"flex", alignItems:"center", gap:8 }} className="mobile-nav-right">
             <button onClick={() => { setView("cart"); setMobileMenuOpen(false) }}
-              style={{ position:"relative", background:"transparent", border:`1px solid ${cartCount>0?accentColor:cardBorder}`, borderRadius:999, padding:"7px 10px", cursor:"pointer", color:cartCount>0?accentColor:"rgba(200,190,170,.7)", display:"flex", alignItems:"center" }}>
+              style={{ position:"relative", background:"transparent", border:`1px solid ${cartCount>0?accentColor:cardBorder}`, borderRadius:999, padding:"7px 10px", cursor:"pointer", color:cartCount>0?accentColor:t.textMuted, display:"flex", alignItems:"center" }}>
               <ShoppingCart style={{ width:16, height:16 }} />
               {cartCount > 0 && (
                 <span style={{ position:"absolute", top:-5, right:-5, background:"#ef4444", color:"#fff", borderRadius:"50%", width:16, height:16,
@@ -520,7 +520,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
 
         {/* Mobile dropdown menu */}
         {mobileMenuOpen && (
-          <nav className="shop-mobile-menu" style={{ borderTop:`1px solid ${cardBorder}`, padding:"8px 0", background:isDelivery?"rgba(10,0,18,.98)":"rgba(15,13,7,.98)" }}>
+          <nav className="shop-mobile-menu" style={{ borderTop:`1px solid ${cardBorder}`, padding:"8px 0", background: t.headerBg }}>
             {navItems.map((item) => (
               <button key={item.label} onClick={item.action}
                 style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"14px 20px", background:"transparent", border:"none",
@@ -576,9 +576,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
               style={{
                 position:"sticky", top:0, zIndex:15, margin:"0 0 22px",
                 padding:"12px 4px 14px",
-                background: isDelivery
-                  ? "linear-gradient(180deg, rgba(10,0,18,.97) 60%, rgba(10,0,18,.55))"
-                  : "linear-gradient(180deg, rgba(15,13,7,.97) 60%, rgba(15,13,7,.55))",
+                background: `linear-gradient(180deg, ${t.headerBg} 60%, transparent)`,
                 backdropFilter:"blur(14px)",
                 WebkitBackdropFilter:"blur(14px)",
               }}
@@ -591,21 +589,6 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 {(["all", ...sections] as string[]).map((s) => {
                   const active = activeSection === s
                   const label = s === "all" ? "Tout" : s.charAt(0).toUpperCase() + s.slice(1)
-                  const activeBg = isDelivery
-                    ? "linear-gradient(135deg, #8b00ff 0%, #00ff9d 100%)"
-                    : "linear-gradient(135deg, #ffca28 0%, #e65100 100%)"
-                  const idleBg = isDelivery
-                    ? "rgba(139,0,255,.08)"
-                    : "rgba(255,202,40,.06)"
-                  const idleBorder = isDelivery
-                    ? "1px solid rgba(0,255,157,.22)"
-                    : "1px solid rgba(255,202,40,.22)"
-                  const activeBorder = isDelivery
-                    ? "1px solid rgba(0,255,157,.55)"
-                    : "1px solid rgba(255,202,40,.55)"
-                  const activeShadow = isDelivery
-                    ? "0 0 18px rgba(139,0,255,.45), 0 0 28px rgba(0,255,157,.18), inset 0 1px 0 rgba(255,255,255,.25)"
-                    : "0 0 18px rgba(255,202,40,.4), 0 4px 14px rgba(230,81,0,.25), inset 0 1px 0 rgba(255,255,255,.35)"
                   return (
                     <button
                       key={s}
@@ -617,11 +600,9 @@ export function ShopPage({ shop, initialProducts }: Props) {
                         position:"relative",
                         padding:"10px 20px",
                         borderRadius:14,
-                        border: active ? activeBorder : idleBorder,
-                        background: active ? activeBg : idleBg,
-                        color: active
-                          ? (isDelivery ? "#05010a" : "#0f0d07")
-                          : (isDelivery ? "rgba(240,248,255,.88)" : "rgba(245,232,199,.88)"),
+                        border: `1px solid ${active ? t.chipActiveBorder : t.chipIdleBorder}`,
+                        background: active ? t.chipActiveBg : t.chipIdleBg,
+                        color: active ? t.chipActiveText : t.chipIdleText,
                         fontSize:12,
                         fontWeight: active ? 800 : 600,
                         letterSpacing:"0.08em",
@@ -629,7 +610,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
                         fontFamily:"Orbitron, Inter, system-ui, sans-serif",
                         cursor:"pointer",
                         whiteSpace:"nowrap",
-                        boxShadow: active ? activeShadow : "inset 0 1px 0 rgba(255,255,255,.04)",
+                        boxShadow: active ? t.chipActiveShadow : "inset 0 1px 0 rgba(255,255,255,.04)",
                         transition:"transform .2s ease, box-shadow .25s ease, border-color .2s ease, background .2s ease, color .2s ease",
                         backdropFilter: active ? "none" : "blur(8px)",
                       }}
@@ -637,17 +618,15 @@ export function ShopPage({ shop, initialProducts }: Props) {
                         if (!active) {
                           const el = e.currentTarget as HTMLElement
                           el.style.transform = "translateY(-1px)"
-                          el.style.borderColor = isDelivery ? "rgba(0,255,157,.4)" : "rgba(255,202,40,.4)"
-                          el.style.boxShadow = isDelivery
-                            ? "0 0 12px rgba(139,0,255,.2)"
-                            : "0 0 12px rgba(255,202,40,.18)"
+                          el.style.borderColor = `rgba(${t.accentRgb},.4)`
+                          el.style.boxShadow = `0 0 12px rgba(${t.primaryRgb},.22)`
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!active) {
                           const el = e.currentTarget as HTMLElement
                           el.style.transform = "translateY(0)"
-                          el.style.borderColor = isDelivery ? "rgba(0,255,157,.22)" : "rgba(255,202,40,.22)"
+                          el.style.borderColor = t.chipIdleBorder
                           el.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.04)"
                         }
                       }}
@@ -677,7 +656,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
                 onClick={() => setSelectedProduct(product)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedProduct(product) } }}
                 style={{
-                  borderRadius:20, border:`1px solid ${cardBorder}`, background:isDelivery?"rgba(18,0,31,.92)":"rgba(20,18,12,.92)",
+                  borderRadius:20, border:`1px solid ${cardBorder}`, background: t.cardBg,
                   overflow:"hidden", cursor:"pointer", transition:"transform .25s, box-shadow .25s",
                   boxShadow:"0 8px 20px rgba(0,0,0,.45)", display:"flex", flexDirection:"column", minHeight:0,
                 }}
@@ -800,7 +779,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
           <div
             className="product-modal-sheet"
             style={{
-              background:isDelivery?"#12001f":"rgba(20,18,12,.98)",
+              background: t.cardBg,
               border:`1px solid ${cardBorder}`,
               padding:"20px 20px 28px",
               overflowY:"auto",
@@ -923,10 +902,10 @@ export function ShopPage({ shop, initialProducts }: Props) {
               width: "100%", maxWidth: 420,
               borderRadius: 20,
               border: `1px solid ${cardBorder}`,
-              background: isDelivery ? "rgba(18,0,31,.98)" : "rgba(20,18,12,.98)",
+              background: t.cardBg,
               boxShadow: `0 0 40px ${glowColor}, 0 24px 60px rgba(0,0,0,.75)`,
               padding: "22px 20px 18px",
-              color: isDelivery ? "#f0f8ff" : "#f5e8c7",
+              color: t.text,
             }}
           >
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>

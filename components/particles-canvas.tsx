@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react"
 
-type ParticleTheme = "gold" | "delivery"
+type ParticleTheme = "gold" | "idf" | "delivery"
 
 interface Props {
   theme?: ParticleTheme
@@ -40,8 +40,10 @@ export function ParticlesCanvas({ theme = "gold" }: Props) {
     const count = window.innerWidth < 768 ? 60 : 110
 
     const goldColors = ["rgba(255,202,40,0.42)", "rgba(230,81,0,0.38)"]
+    const idfColors = ["rgba(96,165,250,0.45)", "rgba(99,102,241,0.4)"]
     const deliveryColors = ["rgba(139,0,255,0.45)", "rgba(0,255,157,0.4)"]
-    const colors = theme === "delivery" ? deliveryColors : goldColors
+    const colors =
+      theme === "delivery" ? deliveryColors : theme === "idf" ? idfColors : goldColors
 
     for (let i = 0; i < count; i++) {
       particles.push({
