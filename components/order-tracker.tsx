@@ -9,7 +9,7 @@ import {
   reportParcelIssue,
 } from "@/app/actions/messaging"
 import type { OrderThread, ThreadMessage } from "@/lib/db/schema"
-import { statusMeta, getParcelClientActions, normalizeStatus } from "@/lib/order-status"
+import { statusMeta, getParcelClientActions } from "@/lib/order-status"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 
@@ -127,27 +127,17 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
   const textMuted = "rgba(200,190,170,.7)"
 
   if (selected) {
-    const statusKey = normalizeStatus(selected.status)
-    const endCycle =
-      statusKey === "locker_expedie" ||
-      statusKey === "souci_livraison" ||
-      selected.status === "locker_expedie" ||
-      selected.status === "souci_livraison"
     const actions = getParcelClientActions(selected)
-    const {
-      showDeposit,
-      showPrepBanner,
-      payLabel,
-      wallet,
-      depositNotified,
-    } = actions
-    const isShipped = endCycle || actions.isShipped
-    const showReceive = statusKey === "locker_expedie" || selected.status === "locker_expedie"
+    const showDeposit = actions.showDeposit
+    const showPrepBanner = actions.showPrepBanner
+    const isShipped = actions.isShipped
+    const showReceive = actions.showReceive
+    const payLabel = actions.payLabel
+    const wallet = actions.wallet || selected.xmrWallet?.trim() || null
+    const depositNotified = actions.depositNotified
     const tracking = actions.tracking || selected.colissimoNumber?.trim() || null
     const concernUnlock = actions.concernUnlock
-    const concernEnabled = endCycle
-      ? !concernUnlock || Date.now() >= concernUnlock.getTime()
-      : actions.concernEnabled
+    const concernEnabled = actions.concernEnabled
 
     return (
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px" }} className="shop-main-pad">

@@ -325,30 +325,28 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
 
   if (!isOpen) return null
 
-  const isTrkSelected = selected && isTrkMessage(selected)
+  const isTrkSelected = !!(selected && isTrkMessage(selected))
+  const parcelActions =
+    selected && !isTrkSelected ? getParcelClientActions(selected) : null
   const statusKey = selected ? normalizeStatus(selected.status) : null
-  // Condition ULTRA directe — ne dépend pas seulement du helper (évite tout faux négatif)
-  const endCycle =
-    !!selected &&
-    !isTrkSelected &&
-    (statusKey === "locker_expedie" ||
-      statusKey === "souci_livraison" ||
-      selected.status === "locker_expedie" ||
-      selected.status === "souci_livraison")
-  const parcelActions = selected && !isTrkMessage(selected) ? getParcelClientActions(selected) : null
-  const showDepositZone = !!parcelActions?.showDeposit && !endCycle
-  const payWallet = parcelActions?.wallet ?? null
+
+  const showDepositZone = !!parcelActions?.showDeposit
+  const showPrepBanner = !!parcelActions?.showPrepBanner
+  const isShippedParcel = !!parcelActions?.isShipped
+  const showReceiveBtn = !!parcelActions?.showReceive
+  const payWallet = parcelActions?.wallet ?? selected?.xmrWallet?.trim() ?? null
   const payCryptoLabel = parcelActions?.payLabel ?? "CRYPTO"
-  const depositAlreadyNotified = parcelActions?.depositNotified ?? false
-  const depositAlreadyConfirmed = parcelActions?.depositConfirmed ?? false
-  const isShippedParcel = endCycle || !!parcelActions?.isShipped
+  const depositAlreadyNotified =
+    !!parcelActions?.depositNotified || !!selected?.depositNotified || depositSent
   const concernUnlock = parcelActions?.concernUnlock ?? null
-  const concernEnabled = endCycle
-    ? !concernUnlock || Date.now() >= concernUnlock.getTime()
-    : (parcelActions?.concernEnabled ?? false)
-  const showReceiveBtn = statusKey === "locker_expedie" || selected?.status === "locker_expedie"
+  const concernEnabled = !!parcelActions?.concernEnabled
   const trackingNumber =
     parcelActions?.tracking ?? selected?.colissimoNumber?.trim() ?? null
+
+  const showActionBar =
+    !!selected &&
+    !isTrkSelected &&
+    (showDepositZone || showPrepBanner || isShippedParcel)
 
   return (
     <div
@@ -396,44 +394,98 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
           </button>
         </div>
 
-        {/* Actions fin de cycle — collées sous le header (hors zone scroll, jamais clipées) */}
-        {selected && isShippedParcel && (
+        {/* Barre d'actions cycle colis — toujours sous le header (jamais clipée) */}
+        {showActionBar && selected && (
           <div
             className="shrink-0 space-y-2 border-b border-accent/40 bg-accent/10 px-4 py-3"
             style={{ flexShrink: 0 }}
           >
-            {trackingNumber ? (
-              <p className="text-center text-[11px] text-muted-foreground">
-                Suivi : <span className="font-mono font-semibold text-foreground">{trackingNumber}</span>
+            {/* Étape 1 : virement */}
+            {showDepositZone && (
+              <>
+                {payWallet ? (
+                  <div className="rounded-xl border border-accent/30 bg-background/70 px-3 py-2">
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-accent">
+                      Adresse {payCryptoLabel}
+                    </p>
+                    <p className="break-all font-mono text-xs text-foreground">{payWallet}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Total : <strong>{selected.total}€</strong>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Adresse wallet bientôt communiquée — tu peux déjà signaler ton virement.
+                  </p>
+                )}
+                {!depositAlreadyNotified ? (
+                  <button
+                    type="button"
+                    onClick={handleDeposit}
+                    disabled={depositSending}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-sm font-bold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {depositSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    J&apos;ai fait le virement
+                  </button>
+                ) : (
+                  <p className="rounded-xl border border-border bg-background/60 px-3 py-2 text-center text-xs text-muted-foreground">
+                    Virement signalé — en attente de confirmation vendeur.
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* Étape 2 : préparation */}
+            {showPrepBanner && (
+              <p className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-center text-sm font-semibold text-accent">
+                Virement reçu — commande en préparation
               </p>
-            ) : null}
-            {showReceiveBtn ? (
-              <button
-                type="button"
-                onClick={handleConfirmReceived}
-                disabled={receiveSending}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-sm font-bold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {receiveSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                J&apos;ai bien reçu mon colis
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={handleReportIssue}
-              disabled={!concernEnabled || issueSending || selected.status === "souci_livraison" || statusKey === "souci_livraison"}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-background/80 py-3 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-secondary"
-            >
-              {issueSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {statusKey === "souci_livraison" || selected.status === "souci_livraison"
-                ? "Souci déjà signalé — écris ci-dessous"
-                : "J'ai un souci avec ma livraison"}
-            </button>
-            {!concernEnabled && concernUnlock && showReceiveBtn ? (
-              <p className="text-center text-[11px] text-muted-foreground">
-                Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
-              </p>
-            ) : null}
+            )}
+
+            {/* Étape 3 : réception / souci */}
+            {isShippedParcel && (
+              <>
+                {trackingNumber ? (
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Suivi :{" "}
+                    <span className="font-mono font-semibold text-foreground">{trackingNumber}</span>
+                  </p>
+                ) : null}
+                {showReceiveBtn ? (
+                  <button
+                    type="button"
+                    onClick={handleConfirmReceived}
+                    disabled={receiveSending}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-sm font-bold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {receiveSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    J&apos;ai bien reçu mon colis
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleReportIssue}
+                  disabled={
+                    !concernEnabled ||
+                    issueSending ||
+                    statusKey === "souci_livraison" ||
+                    selected.status === "souci_livraison"
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-background/80 py-3 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-secondary"
+                >
+                  {issueSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {statusKey === "souci_livraison" || selected.status === "souci_livraison"
+                    ? "Souci déjà signalé — écris ci-dessous"
+                    : "J'ai un souci avec ma livraison"}
+                </button>
+                {!concernEnabled && concernUnlock && showReceiveBtn ? (
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         )}
 
@@ -648,48 +700,8 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
               )}
             </div>
 
-            {/* Pied d'actions : shrink-0 pour ne jamais disparaître sous overflow:hidden */}
+            {/* Zone de réponse uniquement (actions colis = barre sous le header) */}
             <div className="shrink-0">
-            {/* Zone paiement crypto / dépôt (adresse + bouton virement) */}
-            {showDepositZone && !depositAlreadyConfirmed && (
-              <div className="border-t border-border p-4 space-y-3">
-                {payWallet && (
-                  <div className="rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3">
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-accent">
-                      Adresse {payCryptoLabel}
-                    </p>
-                    <p className="break-all font-mono text-xs text-foreground">{payWallet}</p>
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      Total : <strong>{selected?.total}€</strong> — envoie depuis ton portefeuille.
-                    </p>
-                  </div>
-                )}
-                {!depositAlreadyNotified && !depositSent ? (
-                  <button
-                    type="button"
-                    onClick={handleDeposit}
-                    disabled={depositSending}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    {depositSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    J&apos;ai fait le virement
-                  </button>
-                ) : (
-                  <div className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-center text-sm text-muted-foreground">
-                    Virement signalé — en attente de confirmation par le vendeur.
-                  </div>
-                )}
-              </div>
-            )}
-            {showDepositZone && depositAlreadyConfirmed && selected?.status === "preparation" && (
-              <div className="border-t border-border p-4">
-                <div className="rounded-2xl border border-accent/40 bg-accent/10 px-4 py-3 text-center text-sm font-semibold text-accent">
-                  Virement reçu — ta commande est en préparation.
-                </div>
-              </div>
-            )}
-
-            {/* Zone de réponse */}
             {!isTrkSelected && (
               <div className="border-t border-border p-4">
                 {isClosedStatus(selected.status) ? (

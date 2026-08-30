@@ -56,11 +56,11 @@ export function paymentCryptoFromSummary(summary: string | null | undefined): st
 
 /**
  * Visibilité des actions client sur une commande colis.
- * Source unique pour OrderTracker + MyOrdersModal.
+ * Règles simples (une seule source de vérité) :
  *
- * Règle durcie : le statut pipeline colis (locker_expedie / souci / …)
- * suffit à afficher les boutons — on ne dépend plus uniquement de fulfillment
- * (qui peut être vide / legacy / mal renseigné alors que le colis est parti).
+ * 1. Réception / souci  → statut locker_expedie | souci_livraison
+ * 2. Virement           → commande colis pas encore confirmée ni expédiée
+ * 3. Préparation        → dépôt confirmé + statut preparation
  */
 export function getParcelClientActions(order: {
   fulfillment?: string | null
@@ -74,74 +74,77 @@ export function getParcelClientActions(order: {
   colissimoNumber?: string | null
   shop?: string | null
 }) {
-  const fulfillment = (order.fulfillment ?? "").trim()
-  const status = normalizeStatus(order.status)
+  const fulfillment = (order.fulfillment ?? "").trim().toLowerCase()
+  const statusRaw = (order.status ?? "").trim()
+  const status = normalizeStatus(statusRaw)
   const pay =
     (order.paymentCrypto || paymentCryptoFromSummary(order.summary) || "").toLowerCase() || null
+  const wallet = order.xmrWallet?.trim() || null
+  const depositConfirmed = !!order.depositConfirmed
+  const depositNotified = !!order.depositNotified
 
-  const fulfillmentIsParcel =
-    fulfillment.length > 0 &&
-    fulfillment !== "meetup" &&
-    fulfillment !== "livraison"
-
-  // Statuts exclusifs au flux colis → on force le mode parcel
-  const statusIsParcelPipeline =
-    status === "locker_expedie" ||
-    status === "souci_livraison" ||
-    status === "locker_livre" ||
-    status === "locker_en_attente_paiement" ||
-    status === "locker_paiement_recu"
-
-  const looksLikeDeliveryShop =
+  const isLocalFulfillment = fulfillment === "meetup" || fulfillment === "livraison"
+  const looksDelivery =
     (order.shop ?? "").toLowerCase() === "calidelivery" ||
     /\[calidelivery\]/i.test(order.summary ?? "") ||
-    /\b(chronopost|colissimo|mondial\s*relay|ups)\b/i.test(order.summary ?? "")
+    /\b(chronopost|colissimo|mondial\s*relay|ups|locker)\b/i.test(
+      `${order.summary ?? ""} ${fulfillment}`,
+    ) ||
+    (!!fulfillment && !isLocalFulfillment) ||
+    !!pay ||
+    !!wallet ||
+    !!order.colissimoNumber?.trim()
 
-  const isParcel =
-    fulfillmentIsParcel ||
-    statusIsParcelPipeline ||
-    !!(pay && looksLikeDeliveryShop) ||
-    !!(order.colissimoNumber?.trim() && fulfillment !== "meetup")
+  const isParcel = !isLocalFulfillment && looksDelivery
 
-  // Fin de cycle : UNIQUEMENT le statut compte (plus de gate isParcel)
-  const isShipped = status === "locker_expedie" || status === "souci_livraison"
+  // —— Fin de cycle (réception) : statut seul ——
+  const isShipped =
+    status === "locker_expedie" ||
+    status === "souci_livraison" ||
+    statusRaw === "locker_expedie" ||
+    statusRaw === "souci_livraison"
 
-  const awaitingPayment =
-    isParcel &&
-    !order.depositConfirmed &&
-    !isShipped &&
-    status !== "livree" &&
-    status !== "locker_livre" &&
-    status !== "annulee" &&
-    status !== "preparation"
+  const closed =
+    status === "livree" ||
+    status === "locker_livre" ||
+    status === "annulee" ||
+    status === "ferme"
 
+  // —— Début de cycle (virement) ——
+  // Afficher dès qu'on a une commande colis / crypto non confirmée, hors expédition / clôture.
+  // Pas de dépendance fragile : crypto OU wallet OU shop delivery OU fulfillment colis.
   const showDeposit =
-    awaitingPayment || (isParcel && !!order.depositNotified && !order.depositConfirmed && !isShipped)
-  const showPrepBanner = isParcel && !!order.depositConfirmed && status === "preparation"
+    !depositConfirmed &&
+    !isShipped &&
+    !closed &&
+    status !== "preparation" &&
+    (isParcel || !!pay || !!wallet || looksDelivery)
 
-  // shippedAt manquant (anciennes commandes) → débloquer le souci immédiatement
+  const showPrepBanner = depositConfirmed && status === "preparation"
+
   const concernUnlock = order.shippedAt
-    ? parcelConcernUnlockAt(order.shippedAt, fulfillment)
+    ? parcelConcernUnlockAt(order.shippedAt, order.fulfillment)
     : isShipped
       ? new Date(0)
       : null
-  const concernEnabled = isShipped && (!!concernUnlock && Date.now() >= concernUnlock.getTime())
+  const concernEnabled = isShipped && (!concernUnlock || Date.now() >= concernUnlock.getTime())
 
   return {
     isParcel,
     payCrypto: pay,
     payLabel: (pay || "crypto").toUpperCase(),
-    wallet: order.xmrWallet?.trim() || null,
+    wallet,
     showDeposit,
     showPrepBanner,
     isShipped,
-    showReceive: status === "locker_expedie",
+    showReceive:
+      status === "locker_expedie" || statusRaw === "locker_expedie",
     showIssue: isShipped,
     concernUnlock: order.shippedAt ? concernUnlock : null,
     concernEnabled,
     tracking: order.colissimoNumber?.trim() || null,
-    depositNotified: !!order.depositNotified,
-    depositConfirmed: !!order.depositConfirmed,
+    depositNotified,
+    depositConfirmed,
   }
 }
 
