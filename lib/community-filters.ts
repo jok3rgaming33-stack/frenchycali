@@ -53,6 +53,78 @@ export function containsInsult(text: string): boolean {
   return false
 }
 
+/** Extensions / TLD fréquents utilisés pour le démarchage. */
+const BLOCKED_TLDS = [
+  "com", "fr", "net", "org", "io", "co", "me", "tv", "gg", "app", "dev", "xyz",
+  "info", "biz", "eu", "be", "ch", "uk", "de", "es", "it", "nl", "ru", "online",
+  "shop", "store", "site", "link", "click", "top", "pro", "to", "cc", "tk",
+]
+
+/** Réseaux / apps souvent cités pour spam / démarchage. */
+const SOCIAL_NETWORKS = [
+  "telegram", "instagram", "discord", "snapchat", "tiktok", "twitter", "facebook",
+  "whatsapp", "signal", "onlyfans", "snap", "linkedin", "youtube", "reddit",
+  "twitch", "threads", "bluesky", "mastodon", "pinterest", "vk", "wechat",
+  "line", "viber", "skype", "messenger", "tinder", "bumble",
+  // alias / abréviations
+  "insta", "ig", "fb", "yt", "wa", "tg", "tt", "sc",
+]
+
+/**
+ * Détecte liens, domaines (www / .com / .fr…) et noms de réseaux sociaux
+ * pour bloquer le spam / démarchage dans le canal communautaire.
+ */
+export function containsLinkOrSocial(text: string): boolean {
+  const raw = (text ?? "").trim()
+  if (!raw) return false
+
+  const lower = stripAccents(raw.toLowerCase())
+  // Normalisations anti-contournement légères (garde les points pour les TLD)
+  const spaced = lower
+    .replace(/\[dot\]|\(dot\)/gi, ".")
+    .replace(/\s*\[\s*point\s*\]\s*/gi, ".")
+    .replace(/\s+point\s+/gi, ".")
+    .replace(/\s+dot\s+/gi, ".")
+    .replace(/h\s*t\s*t\s*p\s*s?/gi, "http")
+    .replace(/w\s*w\s*w/gi, "www")
+
+  // URLs / protocoles
+  if (/\bhttps?:\/\//i.test(spaced)) return true
+  if (/\bwww\./i.test(spaced) || /\bwww\b/i.test(spaced)) return true
+  // t.me / discord.gg / bit.ly etc.
+  if (/\b(?:t\.me|discord\.gg|bit\.ly|tinyurl|linktr\.ee|cutt\.ly)\b/i.test(spaced)) return true
+
+  // domaine type nom.tld (ex. boutique.com, site . fr)
+  const tldAlt = BLOCKED_TLDS.join("|")
+  const domainRe = new RegExp(
+    String.raw`(?:^|[^a-z0-9])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\s*\.\s*)+(?:${tldAlt})\b`,
+    "i",
+  )
+  if (domainRe.test(spaced)) return true
+
+  // « point com », « point fr » écrits en toutes lettres
+  const pointTld = new RegExp(String.raw`\bpoint\s+(?:${tldAlt})\b`, "i")
+  if (pointTld.test(lower)) return true
+
+  // Noms de réseaux (mot entier ; alias courts = frontières strictes)
+  const norm = normalizeForFilter(raw)
+  for (const name of SOCIAL_NETWORKS) {
+    const n = normalizeForFilter(name)
+    if (!n) continue
+    if (n.length <= 2) {
+      const shortRe = new RegExp(String.raw`(?:^|\s)${n}(?:\s|$)`)
+      if (shortRe.test(norm)) return true
+      continue
+    }
+    // Mot entier + variante espacée (t e l e g r a m) — évite « signaler » pour « signal »
+    const letters = n.replace(/\s+/g, "").split("").map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    const fuzzy = new RegExp(String.raw`(?:^|\s)${letters.join("\\s*")}(?:\s|$)`)
+    if (fuzzy.test(norm)) return true
+  }
+
+  return false
+}
+
 export type SpamCheckInput = {
   body: string
   mediaCount: number
@@ -89,6 +161,14 @@ export function validateCommunityPost(input: SpamCheckInput): FilterResult {
 
   if (body && containsInsult(body)) {
     return { ok: false, error: "Message refusé : langage inapproprié détecté." }
+  }
+
+  if (body && containsLinkOrSocial(body)) {
+    return {
+      ok: false,
+      error:
+        "Message refusé : liens, sites (www / .com / .fr…) et réseaux sociaux sont interdits (anti-démarchage).",
+    }
   }
 
   const stamps = input.recentTimestamps.filter((t) => now - t < WINDOW_MS)
