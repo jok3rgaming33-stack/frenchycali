@@ -1,10 +1,16 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ChevronLeft, Package, MessageCircle, Send, Loader2, RefreshCw } from "lucide-react"
+import { ChevronLeft, Package, Send, Loader2, RefreshCw } from "lucide-react"
 import { getOrdersByToken, getThreadMessages, sendClientMessage, updateClientLastSeen } from "@/app/actions/order"
+import {
+  notifyDeposit,
+  confirmParcelReceived,
+  reportParcelIssue,
+} from "@/app/actions/messaging"
 import type { OrderThread, ThreadMessage } from "@/lib/db/schema"
-import { statusMeta } from "@/lib/order-status"
+import { statusMeta, parcelConcernUnlockAt, isClosedStatus } from "@/lib/order-status"
+import { isParcelFulfillment } from "@/lib/shops"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 
@@ -23,20 +29,55 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const [rateThreadId, setRateThreadId] = useState<number | null>(null)
+  const [depositSending, setDepositSending] = useState(false)
+  const [receiveSending, setReceiveSending] = useState(false)
+  const [issueSending, setIssueSending] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { setOrders(await getOrdersByToken(customerToken)) }
-    catch {} finally { setLoading(false) }
+    try {
+      const list = await getOrdersByToken(customerToken)
+      setOrders(list)
+      setSelected((cur) => {
+        if (!cur) return cur
+        return list.find((o) => o.id === cur.id) ?? cur
+      })
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false)
+    }
   }, [customerToken])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   const openOrder = async (order: OrderThread) => {
     setSelected(order)
     const msgs = await getThreadMessages(order.id)
     setMessages(msgs)
     await updateClientLastSeen(order.trackingToken)
+    // Rafraîchir la fiche (statut / suivi / shippedAt à jour)
+    try {
+      const list = await getOrdersByToken(customerToken)
+      setOrders(list)
+      const fresh = list.find((o) => o.id === order.id)
+      if (fresh) setSelected(fresh)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const refreshSelected = async (threadId: number) => {
+    const [msgs, list] = await Promise.all([
+      getThreadMessages(threadId),
+      getOrdersByToken(customerToken),
+    ])
+    setMessages(msgs)
+    setOrders(list)
+    const fresh = list.find((o) => o.id === threadId)
+    if (fresh) setSelected(fresh)
   }
 
   const sendMsg = async () => {
@@ -45,120 +86,436 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
     const res = await sendClientMessage(selected.id, newMsg.trim(), customerToken)
     if (res.ok) {
       setNewMsg("")
-      const msgs = await getThreadMessages(selected.id)
-      setMessages(msgs)
+      await refreshSelected(selected.id)
     }
     setSending(false)
   }
 
-  const statusBg: Record<string, string> = {
-    nouveau: "rgba(234,179,8,.15)", confirme: "rgba(59,130,246,.15)", en_preparation: "rgba(168,85,247,.15)",
-    expedie: "rgba(99,102,241,.15)", en_route: "rgba(59,130,246,.15)", livree: "rgba(34,197,94,.15)",
-    annule: "rgba(239,68,68,.15)", annulee: "rgba(239,68,68,.15)",
+  const handleDeposit = async () => {
+    if (!selected || depositSending) return
+    setDepositSending(true)
+    try {
+      await notifyDeposit(selected.id)
+      await refreshSelected(selected.id)
+    } finally {
+      setDepositSending(false)
+    }
   }
-  const statusColor: Record<string, string> = {
-    nouveau: "#eab308", confirme: "#3b82f6", en_preparation: "#a855f7",
-    expedie: "#6366f1", en_route: "#3b82f6", livree: "#22c55e",
-    annule: "#ef4444", annulee: "#ef4444",
+
+  const handleConfirmReceived = async () => {
+    if (!selected || receiveSending) return
+    setReceiveSending(true)
+    try {
+      const res = await confirmParcelReceived(selected.id, customerToken)
+      if (res.ok) await refreshSelected(selected.id)
+    } finally {
+      setReceiveSending(false)
+    }
   }
 
-  if (selected) return (
-    <div style={{ maxWidth:700, margin:"0 auto", padding:"20px 16px" }}>
-      <button onClick={() => setSelected(null)} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer", color:accentColor, fontSize:13, marginBottom:16 }}>
-        <ChevronLeft style={{ width:16, height:16 }} /> Retour
-      </button>
-      <div style={{ borderRadius:20, border:`1px solid ${cardBorder}`, background:"rgba(20,18,12,.88)", overflow:"hidden" }}>
-        <div style={{ padding:"16px 20px", borderBottom:`1px solid ${cardBorder}` }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <h2 style={{ margin:0, fontSize:16, fontWeight:700, color:"#f5e8c7" }}>Commande #{selected.id}</h2>
-            <span style={{ fontSize:12, padding:"4px 12px", borderRadius:999, background:statusBg[selected.status]||"rgba(255,255,255,.08)", color:statusColor[selected.status]||"#f5e8c7", fontWeight:600 }}>
-              {statusMeta(selected.status).label}
-            </span>
-          </div>
-          <p style={{ margin:"6px 0 0", fontSize:12, color:"rgba(200,190,170,.7)" }}>{selected.summary}</p>
-          <p style={{ margin:"4px 0 0", fontSize:14, fontWeight:700, color:accentColor }}>{selected.total}€</p>
-        </div>
-        {/* Messages */}
-        <div style={{ display:"flex", flexDirection:"column", gap:8, padding:16, minHeight:200, maxHeight:350, overflowY:"auto" }}>
-          {messages.length === 0 && <p style={{ margin:"auto", fontSize:13, color:"rgba(200,190,170,.5)", textAlign:"center" }}>Aucun message pour l&apos;instant</p>}
-          {messages.map((m) => (
-            <div key={m.id} style={{ display:"flex", justifyContent:m.sender==="client"?"flex-end":"flex-start" }}>
-              <div style={{ maxWidth:"75%", padding:"10px 14px", borderRadius:m.sender==="client"?"16px 16px 4px 16px":"16px 16px 16px 4px",
-                background:m.sender==="client"?`rgba(${accentColor==="#00ff9d"?"139,0,255":"255,202,40"},.15)`:"rgba(255,255,255,.06)", border:`1px solid ${cardBorder}` }}>
-                <div style={{ margin:"0 0 4px", fontSize:13, color:"#f5e8c7", lineHeight:1.5 }}>
-                  <MessageBody body={m.body} onRate={(id) => setRateThreadId(id)} />
-                </div>
-                <p style={{ margin:0, fontSize:10, color:"rgba(200,190,170,.5)" }}>
-                  {m.sender === "client" ? "Vous" : "Vendeur"} · {new Date(m.createdAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-        {/* Send */}
-        <div style={{ padding:"12px 16px", borderTop:`1px solid ${cardBorder}`, display:"flex", gap:8 }}>
-          <input value={newMsg} onChange={(e)=>setNewMsg(e.target.value)}
-            onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.nativeEvent.isComposing) sendMsg() }}
-            placeholder="Envoyer un message..." style={{ flex:1, padding:"10px 14px", borderRadius:999, border:`1px solid ${cardBorder}`, background:"rgba(0,0,0,.4)", color:"#f5e8c7", fontSize:13, outline:"none", fontFamily:"inherit" }} />
-          <button onClick={sendMsg} disabled={sending||!newMsg.trim()} style={{ borderRadius:999, padding:"10px 14px", background:accentColor, border:"none", cursor:"pointer", display:"flex", alignItems:"center", opacity:sending||!newMsg.trim()?.5:1 }}>
-            {sending ? <Loader2 style={{ width:16, height:16, animation:"spin 1s linear infinite", color:"#000" }} /> : <Send style={{ width:16, height:16, color:"#000" }} />}
-          </button>
-        </div>
-      </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      {rateThreadId != null && (
-        <RateProductsModal
-          isOpen
-          onClose={() => setRateThreadId(null)}
-          threadId={rateThreadId}
-          userToken={customerToken}
-          accentColor={accentColor}
-          cardBorder={cardBorder}
-        />
-      )}
-    </div>
-  )
+  const handleReportIssue = async () => {
+    if (!selected || issueSending) return
+    setIssueSending(true)
+    try {
+      const res = await reportParcelIssue(selected.id, customerToken)
+      if (res.ok) await refreshSelected(selected.id)
+    } finally {
+      setIssueSending(false)
+    }
+  }
 
-  return (
-    <div style={{ maxWidth:700, margin:"0 auto", padding:"20px 16px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
-        <button onClick={onBack} style={{ background:"none", border:"none", cursor:"pointer", color:accentColor, display:"flex", alignItems:"center", gap:4, fontSize:13 }}>
-          <ChevronLeft style={{ width:16, height:16 }} /> Retour
+  const textMain = "#f5e8c7"
+  const textMuted = "rgba(200,190,170,.7)"
+
+  if (selected) {
+    const isParcel = isParcelFulfillment(selected.fulfillment)
+    const showDeposit =
+      isParcel &&
+      !!(selected.paymentCrypto || selected.xmrWallet) &&
+      !isClosedStatus(selected.status) &&
+      !selected.depositConfirmed
+    const showPrepBanner =
+      isParcel && selected.depositConfirmed && selected.status === "preparation"
+    const isShipped =
+      isParcel &&
+      (selected.status === "locker_expedie" || selected.status === "souci_livraison")
+    const concernUnlock = parcelConcernUnlockAt(selected.shippedAt, selected.fulfillment)
+    const concernEnabled = !!(concernUnlock && Date.now() >= concernUnlock.getTime())
+    const payLabel = (selected.paymentCrypto || "crypto").toUpperCase()
+
+    return (
+      <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px" }} className="shop-main-pad">
+        <button
+          type="button"
+          onClick={() => setSelected(null)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: accentColor,
+            fontSize: 13,
+            marginBottom: 16,
+          }}
+        >
+          <ChevronLeft style={{ width: 16, height: 16 }} /> Retour
         </button>
-        <h1 style={{ margin:0, fontSize:20, fontWeight:700, color:"#f5e8c7" }}>Mes commandes</h1>
-        <button onClick={load} style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", color:"rgba(200,190,170,.6)" }}>
-          <RefreshCw style={{ width:16, height:16 }} />
-        </button>
-      </div>
-
-      {loading && <div style={{ textAlign:"center", padding:60, color:"rgba(200,190,170,.5)" }}><Loader2 style={{ width:32, height:32, margin:"0 auto", animation:"spin 1s linear infinite" }} /></div>}
-
-      {!loading && orders.length === 0 && (
-        <div style={{ textAlign:"center", padding:60, color:"rgba(200,190,170,.5)" }}>
-          <Package style={{ width:48, height:48, margin:"0 auto 16px" }} />
-          <p style={{ margin:0 }}>Aucune commande pour l&apos;instant</p>
-        </div>
-      )}
-
-      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-        {orders.map((order) => (
-          <button key={order.id} onClick={() => openOrder(order)} style={{ width:"100%", textAlign:"left", padding:"16px 20px", borderRadius:18, border:`1px solid ${cardBorder}`, background:"rgba(20,18,12,.82)", cursor:"pointer", transition:"all .2s" }}
-            onMouseEnter={(e)=>(e.currentTarget as HTMLElement).style.borderColor=accentColor}
-            onMouseLeave={(e)=>(e.currentTarget as HTMLElement).style.borderColor=cardBorder}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-              <span style={{ fontSize:14, fontWeight:700, color:"#f5e8c7" }}>#{order.id} — {order.summary.slice(0,40)}{order.summary.length>40?"...":""}</span>
-              <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:statusBg[order.status]||"rgba(255,255,255,.08)", color:statusColor[order.status]||"#f5e8c7", fontWeight:600 }}>
-                {statusMeta(order.status).label}
+        <div
+          style={{
+            borderRadius: 20,
+            border: `1px solid ${cardBorder}`,
+            background: "rgba(20,18,12,.88)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${cardBorder}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: textMain }}>
+                Commande #{selected.id}
+              </h2>
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "4px 12px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,.08)",
+                  color: textMain,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {statusMeta(selected.status).label}
               </span>
             </div>
-            <div style={{ display:"flex", gap:16, fontSize:12, color:"rgba(200,190,170,.7)" }}>
-              <span style={{ color:accentColor, fontWeight:700 }}>{order.total}€</span>
-              <span>{order.fulfillment}</span>
-              <span>{new Date(order.createdAt).toLocaleDateString("fr-FR")}</span>
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: textMuted, whiteSpace: "pre-wrap" }}>
+              {selected.summary}
+            </p>
+            <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 700, color: accentColor }}>
+              {selected.total}€
+              {selected.paymentCrypto ? ` · ${payLabel}` : ""}
+              {selected.fulfillment ? ` · ${selected.fulfillment}` : ""}
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              padding: 16,
+              minHeight: 160,
+              maxHeight: 320,
+              overflowY: "auto",
+            }}
+          >
+            {messages.length === 0 && (
+              <p style={{ margin: "auto", fontSize: 13, color: "rgba(200,190,170,.5)", textAlign: "center" }}>
+                Aucun message pour l&apos;instant
+              </p>
+            )}
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                style={{ display: "flex", justifyContent: m.sender === "client" ? "flex-end" : "flex-start" }}
+              >
+                <div
+                  style={{
+                    maxWidth: "75%",
+                    padding: "10px 14px",
+                    borderRadius: m.sender === "client" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                    background:
+                      m.sender === "client"
+                        ? `rgba(${accentColor === "#00ff9d" ? "139,0,255" : "255,202,40"},.15)`
+                        : "rgba(255,255,255,.06)",
+                    border: `1px solid ${cardBorder}`,
+                  }}
+                >
+                  <div style={{ margin: "0 0 4px", fontSize: 13, color: textMain, lineHeight: 1.5 }}>
+                    <MessageBody body={m.body} onRate={(id) => setRateThreadId(id)} />
+                  </div>
+                  <p style={{ margin: 0, fontSize: 10, color: "rgba(200,190,170,.5)" }}>
+                    {m.sender === "client" ? "Vous" : "LaCentral"} ·{" "}
+                    {new Date(m.createdAt).toLocaleTimeString("fr-FR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Virement crypto */}
+          {showDeposit && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10 }}>
+              {selected.xmrWallet && (
+                <div
+                  style={{
+                    borderRadius: 14,
+                    border: `1px solid ${accentColor}55`,
+                    background: `${accentColor}12`,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: accentColor, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    Adresse {payLabel}
+                  </p>
+                  <p style={{ margin: 0, fontFamily: "monospace", fontSize: 12, color: textMain, wordBreak: "break-all" }}>
+                    {selected.xmrWallet}
+                  </p>
+                </div>
+              )}
+              {!selected.depositNotified ? (
+                <button
+                  type="button"
+                  onClick={handleDeposit}
+                  disabled={depositSending}
+                  style={{
+                    width: "100%",
+                    padding: "13px 16px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: accentColor,
+                    color: "#000",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    opacity: depositSending ? 0.6 : 1,
+                  }}
+                >
+                  {depositSending ? "Envoi…" : "J'ai fait le virement"}
+                </button>
+              ) : (
+                <p style={{ margin: 0, textAlign: "center", fontSize: 12, color: textMuted }}>
+                  Virement signalé — en attente de confirmation vendeur.
+                </p>
+              )}
             </div>
-          </button>
-        ))}
+          )}
+
+          {showPrepBanner && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, textAlign: "center", fontSize: 13, fontWeight: 700, color: accentColor }}>
+              Virement reçu — commande en préparation
+            </div>
+          )}
+
+          {/* Réception / souci après expédition */}
+          {isShipped && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10 }}>
+              {selected.colissimoNumber && (
+                <p style={{ margin: 0, fontSize: 12, color: textMuted }}>
+                  N° de suivi :{" "}
+                  <strong style={{ color: textMain, fontFamily: "monospace" }}>{selected.colissimoNumber}</strong>
+                </p>
+              )}
+              {selected.status === "locker_expedie" && (
+                <button
+                  type="button"
+                  onClick={handleConfirmReceived}
+                  disabled={receiveSending}
+                  style={{
+                    width: "100%",
+                    padding: "13px 16px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: accentColor,
+                    color: "#000",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    opacity: receiveSending ? 0.6 : 1,
+                  }}
+                >
+                  {receiveSending ? "Validation…" : "J'ai bien reçu mon colis"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleReportIssue}
+                disabled={!concernEnabled || issueSending || selected.status === "souci_livraison"}
+                title={
+                  concernEnabled
+                    ? "Signaler un problème"
+                    : concernUnlock
+                      ? `Disponible le ${concernUnlock.toLocaleDateString("fr-FR")}`
+                      : "Disponible après le délai transporteur"
+                }
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  borderRadius: 999,
+                  border: `1px solid ${cardBorder}`,
+                  background: "transparent",
+                  color: textMain,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: concernEnabled ? "pointer" : "not-allowed",
+                  opacity: !concernEnabled || selected.status === "souci_livraison" ? 0.4 : 1,
+                }}
+              >
+                {selected.status === "souci_livraison"
+                  ? "Souci déjà signalé — écris ci-dessous"
+                  : "J'ai un souci avec ma livraison"}
+              </button>
+              {!concernEnabled && concernUnlock && selected.status === "locker_expedie" && (
+                <p style={{ margin: 0, textAlign: "center", fontSize: 11, color: textMuted }}>
+                  Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", gap: 8 }}>
+            <input
+              value={newMsg}
+              onChange={(e) => setNewMsg(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) sendMsg()
+              }}
+              placeholder="Envoyer un message..."
+              style={{
+                flex: 1,
+                padding: "10px 14px",
+                borderRadius: 999,
+                border: `1px solid ${cardBorder}`,
+                background: "rgba(0,0,0,.4)",
+                color: textMain,
+                fontSize: 13,
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+            <button
+              type="button"
+              onClick={sendMsg}
+              disabled={sending || !newMsg.trim()}
+              style={{
+                borderRadius: 999,
+                padding: "10px 14px",
+                background: accentColor,
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                opacity: sending || !newMsg.trim() ? 0.5 : 1,
+              }}
+            >
+              {sending ? (
+                <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite", color: "#000" }} />
+              ) : (
+                <Send style={{ width: 16, height: 16, color: "#000" }} />
+              )}
+            </button>
+          </div>
+        </div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        {rateThreadId != null && (
+          <RateProductsModal
+            isOpen
+            onClose={() => setRateThreadId(null)}
+            threadId={rateThreadId}
+            userToken={customerToken}
+            accentColor={accentColor}
+            cardBorder={cardBorder}
+          />
+        )}
       </div>
+    )
+  }
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px" }} className="shop-main-pad">
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: accentColor,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 13,
+          }}
+        >
+          <ChevronLeft style={{ width: 16, height: 16 }} /> Retour
+        </button>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: textMain }}>Mes commandes</h1>
+        <button
+          type="button"
+          onClick={load}
+          style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "rgba(200,190,170,.6)" }}
+        >
+          <RefreshCw style={{ width: 16, height: 16 }} />
+        </button>
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: 60, color: "rgba(200,190,170,.5)" }}>
+          <Loader2 style={{ width: 32, height: 32, margin: "0 auto", animation: "spin 1s linear infinite" }} />
+        </div>
+      )}
+
+      {!loading && orders.length === 0 && (
+        <div style={{ textAlign: "center", padding: 60, color: "rgba(200,190,170,.5)" }}>
+          <Package style={{ width: 48, height: 48, margin: "0 auto 16px" }} />
+          <p style={{ margin: 0 }}>Aucune commande pour l&apos;instant</p>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {orders
+          .filter((o) => o.status !== "trk_token" && o.total > 0)
+          .map((order) => (
+            <button
+              key={order.id}
+              type="button"
+              onClick={() => openOrder(order)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "16px 20px",
+                borderRadius: 18,
+                border: `1px solid ${cardBorder}`,
+                background: "rgba(20,18,12,.82)",
+                cursor: "pointer",
+                transition: "all .2s",
+              }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = accentColor)}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = cardBorder)}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: textMain }}>
+                  #{order.id}
+                  {order.paymentCrypto ? ` · ${String(order.paymentCrypto).toUpperCase()}` : ""}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: "3px 10px",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,.08)",
+                    color: textMain,
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {statusMeta(order.status).label}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: textMuted, flexWrap: "wrap" }}>
+                <span style={{ color: accentColor, fontWeight: 700 }}>{order.total}€</span>
+                <span>{order.fulfillment}</span>
+                <span>{new Date(order.createdAt).toLocaleDateString("fr-FR")}</span>
+              </div>
+            </button>
+          ))}
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }

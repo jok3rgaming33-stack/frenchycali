@@ -177,8 +177,15 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
         getThread(thread.id),
         markThreadRead(thread.id),
       ])
-      if (data) setMessages(data.messages as Message[])
-      // Si c'est un fil TRK : le supprimer maintenant que le client l'a ouvert
+      if (data) {
+        setMessages(data.messages as Message[])
+        // Toujours rafraîchir la fiche (statut expédié, suivi, shippedAt…)
+        if (data.thread) {
+          const t = data.thread as Thread
+          setSelected(t)
+          setThreads((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...t } : x)))
+        }
+      }
       if (isTrkMessage(thread)) {
         await consumeTrkThread(thread.id)
         setThreads((prev) => prev.filter((t) => t.id !== thread.id))
