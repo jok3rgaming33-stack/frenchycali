@@ -41,10 +41,10 @@ export function DemoAdmin() {
           {/* Logo admin */}
           <div className="flex items-center gap-3">
             <div className="relative h-10 w-10 overflow-hidden rounded-xl">
-              <Image src="/images/logoapp.png" alt="BB33" fill className="object-cover" />
+              <Image src="/images/logoapp.png" alt="LaCentral" fill className="object-cover" />
             </div>
             <div>
-              <p className="text-sm font-bold text-foreground">BreakingBad33</p>
+              <p className="text-sm font-bold text-foreground">LaCentral</p>
               <p className="text-xs text-muted-foreground">Panel Admin</p>
             </div>
           </div>

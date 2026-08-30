@@ -32,7 +32,7 @@ type ActiveNews = {
   slides: Slide[]
 }
 
-const DISMISSED_LS_KEY = "bb33:dismissedNews"
+const DISMISSED_LS_KEY = "lacentral:dismissedNews"
 
 function readLocalDismissed(): number[] {
   if (typeof window === "undefined") return []

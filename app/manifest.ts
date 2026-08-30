@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next"
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "FrenchyCali",
-    short_name: "FrenchyCali",
-    description: "Accès sécurisé FrenchyCali — LaCentral 31, LaCentral IDF & CaliDelivery.",
+    name: "LaCentral",
+    short_name: "LaCentral",
+    description: "Accès sécurisé LaCentral — LaCentral 31, LaCentral IDF & CaliDelivery.",
     start_url: "/",
     scope: "/",
     display: "standalone",
@@ -15,7 +15,7 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "fr",
     icons: [
       {
-        src: "/images/icon-maskable-512.png",
+        src: "/images/icon-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",

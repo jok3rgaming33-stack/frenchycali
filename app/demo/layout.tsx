@@ -3,8 +3,8 @@ import { isDemoAuthorized } from "@/app/demo/actions"
 import { DemoGate } from "@/app/demo/_components/demo-gate"
 
 export const metadata: Metadata = {
-  title: "Démo — BreakingBad33",
-  description: "Démonstration privée de la plateforme BreakingBad33.",
+  title: "Démo — LaCentral",
+  description: "Démonstration privée de la plateforme LaCentral.",
   robots: { index: false, follow: false },
 }
 

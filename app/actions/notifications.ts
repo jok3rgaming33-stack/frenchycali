@@ -125,7 +125,7 @@ export async function sendBroadcastNotification(input: BroadcastInput) {
   for (const t of targets) {
     try {
       const payload = {
-        title: `BreakingBad33 — ${title}`,
+        title: `LaCentral — ${title}`,
         body,
         url: "/",
         tag: `notif-${notificationId}`,

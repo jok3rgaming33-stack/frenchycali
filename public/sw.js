@@ -1,4 +1,4 @@
-// Service Worker FrenchyCali — push + installabilité PWA.
+// Service Worker LaCentral — push + installabilité PWA.
 // Ne pas intercepter les POST (Server Actions / /api/orders) : ça casse le checkout mobile.
 
 self.addEventListener("install", (event) => {
@@ -19,10 +19,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {}
   } catch (e) {
-    data = { title: "FrenchyCali", body: event.data ? event.data.text() : "" }
+    data = { title: "LaCentral", body: event.data ? event.data.text() : "" }
   }
 
-  const title = data.title || "FrenchyCali"
+  const title = data.title || "LaCentral"
   const options = {
     body: data.body || "",
     icon: "/images/logoapp.png",
@@ -103,7 +103,7 @@ self.addEventListener("notificationclick", (event) => {
             }
             // Demande à la page de resync les compteurs
             try {
-              client.postMessage({ type: "BB33_REFRESH_BADGES" })
+              client.postMessage({ type: "LACENTRAL_REFRESH_BADGES" })
             } catch (e) {}
             return
           }

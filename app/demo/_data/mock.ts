@@ -42,12 +42,12 @@ export const DEMO_PRODUCTS = [
   },
   {
     id: 3,
-    title: "Heisenberg OG",
+    title: "LaCentral OG",
     symbol: "H-OG",
     number: "97.4",
     description: "La signature. L'original.",
     fullDescription:
-      "Heisenberg OG est la référence absolue. Rien n'a changé depuis la première batch — parce que la perfection ne se corrige pas.",
+      "LaCentral OG est la référence absolue. Rien n'a changé depuis la première batch — parce que la perfection ne se corrige pas.",
     image: "/images/logoapp.png",
     stock: 8,
     badges: ["top_seller", "nouveau"],
@@ -113,7 +113,7 @@ export const DEMO_ORDERS = [
   {
     id: 101,
     clientPseudo: "B•••dL•••x",
-    items: [{ name: "Blue Sky Premium ×3.5g", price: 50 }, { name: "Heisenberg OG ×1g", price: 11 }],
+    items: [{ name: "Blue Sky Premium ×3.5g", price: 50 }, { name: "LaCentral OG ×1g", price: 11 }],
     total: 61,
     status: "livré",
     type: "livraison",
@@ -135,7 +135,7 @@ export const DEMO_ORDERS = [
   {
     id: 103,
     clientPseudo: "D•••kW•••f",
-    items: [{ name: "Heisenberg OG ×7g", price: 68 }],
+    items: [{ name: "LaCentral OG ×7g", price: 68 }],
     total: 68,
     status: "confirmé",
     type: "livraison",

@@ -145,7 +145,7 @@ export async function createOrderThread(input: NewOrderInput) {
   return { id: thread.id, trackingToken }
 }
 
-// Crée une discussion générale (sans commande) : le client contacte directement le chimiste.
+// Crée une discussion générale (sans commande) : le client contacte directement le support.
 export async function createGeneralInquiryThread(input: {
   customerName: string
   customerToken?: string

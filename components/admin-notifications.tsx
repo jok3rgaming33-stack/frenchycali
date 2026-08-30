@@ -495,7 +495,7 @@ export function AdminNotifications({ initialHistory, users }: Props) {
                         {/* Apercu du contenu exact envoyé */}
                         <div className="space-y-1">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Titre push</p>
-                          <p className="text-sm font-medium text-foreground">BreakingBad33 — {n.title}</p>
+                          <p className="text-sm font-medium text-foreground">LaCentral — {n.title}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Message</p>

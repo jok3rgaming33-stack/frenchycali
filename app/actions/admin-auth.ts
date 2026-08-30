@@ -11,7 +11,7 @@ import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import { isShopId, type ShopId } from "@/lib/shops"
 
 const COOKIE_NAME = "admin_session"
-const ADMIN_PSEUDO = "Heisenberg"
+const ADMIN_PSEUDO = "LaCentral"
 
 export type AdminShopScope = ShopId | "all"
 

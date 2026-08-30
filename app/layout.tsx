@@ -7,19 +7,22 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 const orbitron = Orbitron({ subsets: ["latin"], weight: ["400", "700", "900"], variable: "--font-orbitron" })
 
 export const metadata: Metadata = {
-  title: "FrenchyCali — Accès Sécurisé",
-  description: "Accès sécurisé à la plateforme FrenchyCali.",
+  title: "LaCentral — Accès Sécurisé",
+  description: "Accès sécurisé à la plateforme LaCentral.",
   robots: "noindex, nofollow",
-  applicationName: "FrenchyCali",
+  applicationName: "LaCentral",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/images/icon-maskable-512.png", type: "image/png", sizes: "512x512" }],
+    icon: [
+      { url: "/images/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/images/icon-maskable-512.png", type: "image/png", sizes: "512x512" },
+    ],
     shortcut: "/images/icon-maskable-512.png",
-    apple: [{ url: "/images/icon-maskable-512.png", sizes: "180x180" }],
+    apple: [{ url: "/images/apple-touch-icon.png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
-    title: "FrenchyCali",
+    title: "LaCentral",
     statusBarStyle: "black-translucent",
   },
   formatDetection: { telephone: false },

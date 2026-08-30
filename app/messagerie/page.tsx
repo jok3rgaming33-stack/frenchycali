@@ -8,7 +8,7 @@ import { ArrowLeft, LogOut } from "lucide-react"
 export const dynamic = "force-dynamic"
 
 export const metadata = {
-  title: "Messagerie · BreakingBad33",
+  title: "Messagerie · LaCentral",
   description: "Boîte de réception des commandes",
 }
 

@@ -60,7 +60,7 @@ export default function SplashPage() {
   // Typewriter effect
   useEffect(() => {
     if (redirecting) return
-    const words = ["FRENCHYCALI", "ACCÈS SÉCURISÉ", "BIENVENUE"]
+    const words = ["LACENTRAL", "ACCÈS SÉCURISÉ", "BIENVENUE"]
     let wordIdx = 0; let charIdx = 0; let deleting = false
     const el = document.getElementById("typewriter")
     if (!el) return
@@ -98,10 +98,10 @@ export default function SplashPage() {
 
       {/* Logo + typewriter */}
       <div style={{ position:"relative", zIndex:2, display:"flex", flexDirection:"column", alignItems:"center", gap:16 }}>
-        <img src="https://i.imgur.com/1gye7hI.jpeg" alt="FrenchyCali" style={{ width:100, height:100, borderRadius:28, objectFit:"cover", boxShadow:"0 0 40px rgba(255,202,40,.5)" }} />
+        <img src="/images/icon-maskable-512.png" alt="LaCentral" style={{ width:100, height:100, borderRadius:28, objectFit:"cover", boxShadow:"0 0 40px rgba(255,202,40,.5)" }} />
         <h1 id="typewriter" style={{ margin:0, fontFamily:"Orbitron,sans-serif", fontSize:"clamp(22px,6vw,36px)", fontWeight:900, letterSpacing:"0.25em", textTransform:"uppercase",
           background:"linear-gradient(90deg,#ffca28,#e65100)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", minHeight:"1.2em" }}>
-          FRENCHYCALI
+          LACENTRAL
         </h1>
         <p style={{ margin:0, fontSize:13, letterSpacing:"0.2em", textTransform:"uppercase", color:"rgba(201,167,108,.8)" }}>La plateforme sécurisée</p>
       </div>

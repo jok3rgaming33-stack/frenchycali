@@ -73,7 +73,7 @@ export async function deletePromoCode(id: number) {
 
 function makeCode(discount: number) {
   const random = Math.random().toString(36).slice(2, 8).toUpperCase()
-  return `BB33-${discount}E-${random}`
+  return `LC-${discount}E-${random}`
 }
 
 // Génère un code de réduction en débitant réellement les points du client.

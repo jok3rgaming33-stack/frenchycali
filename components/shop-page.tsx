@@ -85,7 +85,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Features BB33 (modales) — UI reste 100 % FrenchyCali
+  // Features LaCentral (modales) — UI reste 100 % FrenchyCali
   const [msgOpen, setMsgOpen] = useState(false)
   const [ordersOpen, setOrdersOpen] = useState(false)
   const [loyaltyOpen, setLoyaltyOpen] = useState(false)

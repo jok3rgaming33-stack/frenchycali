@@ -186,7 +186,7 @@ function siteBaseUrl(): string {
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.replace(/\/$/, "")
   if (fromEnv) return fromEnv.startsWith("http") ? fromEnv : `https://${fromEnv}`
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`
-  return "https://frenchycali-full.vercel.app"
+  return "https://LaCentral-full.vercel.app"
 }
 
 /**
@@ -236,7 +236,7 @@ export async function createCryptoInvoiceForOrder(input: {
       priceAmount: input.totalEur,
       payCurrency,
       orderId: `fc-${input.threadId}`,
-      description: `FrenchyCali #${input.threadId} — ${input.customerName} [${input.shop}]`,
+      description: `LaCentral #${input.threadId} — ${input.customerName} [${input.shop}]`,
       ipnCallbackUrl,
       successUrl,
       cancelUrl,
@@ -311,7 +311,7 @@ export async function createCryptoInvoiceForOrder(input: {
   const created = await createNowPaymentsInvoice({
     priceAmount: input.totalEur,
     orderId: `fc-${input.threadId}`,
-    description: `FrenchyCali #${input.threadId} — ${input.customerName} [${input.shop}]`,
+    description: `LaCentral #${input.threadId} — ${input.customerName} [${input.shop}]`,
     ipnCallbackUrl,
     successUrl,
     cancelUrl,

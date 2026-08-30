@@ -237,7 +237,7 @@ export async function publishAndNotify(newsId: number) {
   await db.delete(userNewsReads).where(eq(userNewsReads.newsId, newsId))
 
   await notifyAllClients({
-    title: "Nouvelle annonce BreakingBad33",
+    title: "Nouvelle annonce LaCentral",
     body: item.title,
     url: "/",
     tag: `news-${newsId}`,

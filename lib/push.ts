@@ -6,7 +6,7 @@ import { eq, and } from "drizzle-orm"
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
-const SUBJECT = process.env.VAPID_SUBJECT || "mailto:contact@breakingbad33.com"
+const SUBJECT = process.env.VAPID_SUBJECT || "mailto:contact@lacentral.app"
 
 let configured = false
 function ensureConfigured() {

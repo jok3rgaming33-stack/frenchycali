@@ -243,7 +243,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
         ? "Discussion"
         : `Commande #${selected?.id}`
       : view === "compose"
-        ? "Contacter le chimiste"
+        ? "Contacter le support"
         : "Messagerie"
 
   return (
@@ -317,7 +317,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                   className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3 text-sm font-bold uppercase tracking-wide text-accent-foreground transition-opacity hover:opacity-90"
                 >
                   <FlaskConical className="h-4 w-4" aria-hidden="true" />
-                  Contacter le chimiste
+                  Contacter le support
                 </button>
               </div>
             )}
@@ -419,7 +419,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                   <FlaskConical className="h-7 w-7" aria-hidden="true" />
                 </span>
                 <p className="text-sm text-muted-foreground text-pretty">
-                  Une question, une demande spéciale ? Écris directement au chimiste, sans passer par une commande.
+                  Une question, une demande spéciale ? Écris directement au support, sans passer par une commande.
                 </p>
               </div>
               <textarea
@@ -443,7 +443,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                 ) : (
                   <Send className="h-5 w-5" aria-hidden="true" />
                 )}
-                Envoyer au chimiste
+                Envoyer au support
               </button>
             </div>
           </div>
@@ -471,7 +471,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                         }`}
                       >
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                          {isClient ? "Vous" : "Le chimiste"} · {formatMessageTime(m.createdAt)}
+                          {isClient ? "Vous" : "LaCentral"} · {formatMessageTime(m.createdAt)}
                         </div>
                         <MessageBody
                           body={m.body}

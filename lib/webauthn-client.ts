@@ -5,8 +5,11 @@
  * Les IDs de credentials restent en localStorage pour proposer le bouton sans re-saisie de clé.
  */
 
-export const WEBAUTHN_FLAG_KEY = "bb33_webauthn"
-export const WEBAUTHN_IDS_KEY = "bb33_webauthn_ids"
+export const WEBAUTHN_FLAG_KEY = "lacentral_webauthn"
+export const WEBAUTHN_IDS_KEY = "lacentral_webauthn_ids"
+/** Anciennes clés BB33 — migration locale silencieuse. */
+export const WEBAUTHN_FLAG_KEY_LEGACY = "bb33_webauthn"
+export const WEBAUTHN_IDS_KEY_LEGACY = "bb33_webauthn_ids"
 
 export function browserSupportsWebAuthn(): boolean {
   return (
@@ -29,8 +32,23 @@ export async function platformAuthenticatorAvailable(): Promise<boolean> {
   return true
 }
 
+function migrateLegacyWebAuthnKeys() {
+  if (typeof window === "undefined") return
+  try {
+    if (!localStorage.getItem(WEBAUTHN_IDS_KEY) && localStorage.getItem(WEBAUTHN_IDS_KEY_LEGACY)) {
+      localStorage.setItem(WEBAUTHN_IDS_KEY, localStorage.getItem(WEBAUTHN_IDS_KEY_LEGACY)!)
+    }
+    if (!localStorage.getItem(WEBAUTHN_FLAG_KEY) && localStorage.getItem(WEBAUTHN_FLAG_KEY_LEGACY) === "1") {
+      localStorage.setItem(WEBAUTHN_FLAG_KEY, "1")
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function getLocalCredentialIds(): string[] {
   if (typeof window === "undefined") return []
+  migrateLegacyWebAuthnKeys()
   try {
     const raw = localStorage.getItem(WEBAUTHN_IDS_KEY)
     if (!raw) return []
@@ -44,6 +62,7 @@ export function getLocalCredentialIds(): string[] {
 
 export function hasLocalWebAuthn(): boolean {
   if (typeof window === "undefined") return false
+  migrateLegacyWebAuthnKeys()
   return localStorage.getItem(WEBAUTHN_FLAG_KEY) === "1" && getLocalCredentialIds().length > 0
 }
 
@@ -61,6 +80,8 @@ export function forgetLocalCredential(credentialId: string) {
   if (next.length === 0) {
     localStorage.removeItem(WEBAUTHN_IDS_KEY)
     localStorage.removeItem(WEBAUTHN_FLAG_KEY)
+    localStorage.removeItem(WEBAUTHN_IDS_KEY_LEGACY)
+    localStorage.removeItem(WEBAUTHN_FLAG_KEY_LEGACY)
   } else {
     localStorage.setItem(WEBAUTHN_IDS_KEY, JSON.stringify(next))
     localStorage.setItem(WEBAUTHN_FLAG_KEY, "1")
@@ -71,6 +92,8 @@ export function clearLocalWebAuthn() {
   if (typeof window === "undefined") return
   localStorage.removeItem(WEBAUTHN_IDS_KEY)
   localStorage.removeItem(WEBAUTHN_FLAG_KEY)
+  localStorage.removeItem(WEBAUTHN_IDS_KEY_LEGACY)
+  localStorage.removeItem(WEBAUTHN_FLAG_KEY_LEGACY)
 }
 
 export function biometryLabel(): string {

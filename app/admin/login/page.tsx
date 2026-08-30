@@ -129,7 +129,7 @@ export default function AdminLoginPage() {
             Panel Admin
           </h1>
           <p style={{ margin: 0, fontSize: 12, color: "rgba(200,190,170,.55)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            Accès sécurisé — FrenchyCali
+            Accès sécurisé — LaCentral
           </p>
         </div>
 

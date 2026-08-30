@@ -80,16 +80,16 @@ async function getWebAuthnConfig(): Promise<{
   rpName: string
   origins: string[]
 }> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.breakingbad33.com"
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://frenchycali-full.vercel.app"
   const origins = new Set<string>()
-  let envHost = "www.breakingbad33.com"
+  let envHost = "frenchycali-full.vercel.app"
 
   try {
     const u = new URL(siteUrl)
     envHost = u.hostname
     origins.add(u.origin)
   } catch {
-    origins.add("https://www.breakingbad33.com")
+    origins.add("https://frenchycali-full.vercel.app")
   }
 
   // Origine réelle de la requête (Vercel / reverse proxy)
@@ -125,7 +125,7 @@ async function getWebAuthnConfig(): Promise<{
   let rpID = primaryHost.replace(/:\d+$/, "")
   if (!isLocal) {
     const parts = rpID.split(".")
-    // eTLD+1 : breakingbad33.com (couvre www + apex)
+    // eTLD+1 (couvre www + apex)
     if (parts.length >= 2) rpID = parts.slice(-2).join(".")
   } else {
     rpID = "localhost"
@@ -140,7 +140,7 @@ async function getWebAuthnConfig(): Promise<{
 
   return {
     rpID,
-    rpName: "BreakingBad33",
+    rpName: "LaCentral",
     origins: [...origins],
   }
 }

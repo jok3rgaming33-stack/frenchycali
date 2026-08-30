@@ -32,9 +32,9 @@ export function DemoGate() {
       {/* Logo */}
       <div className="mb-8 flex flex-col items-center gap-3">
         <div className="relative h-20 w-20 overflow-hidden rounded-2xl">
-          <Image src="/images/logoapp.png" alt="BreakingBad33" fill className="object-cover" />
+          <Image src="/images/logoapp.png" alt="LaCentral" fill className="object-cover" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">BreakingBad33</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">LaCentral</h1>
         <p className="text-sm text-muted-foreground">Accès démo réservé</p>
       </div>
 

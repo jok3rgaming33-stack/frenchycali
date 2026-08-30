@@ -578,7 +578,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                         className={`max-w-[85%] rounded-2xl p-3 text-sm ${isClient ? "self-end bg-accent text-accent-foreground" : "self-start border border-border bg-background/60 text-foreground"}`}
                       >
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                          {isClient ? "Vous" : "Le Chimiste"} · {formatMessageTime(m.createdAt)}
+                          {isClient ? "Vous" : "LaCentral"} · {formatMessageTime(m.createdAt)}
                         </div>
                         <MessageBody
                           body={m.body}
@@ -691,7 +691,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
                     >
                       <FlaskConical className="h-4 w-4" aria-hidden="true" />
-                      Contacter le chimiste
+                      Contacter le support
                     </button>
                   </div>
                 ) : (

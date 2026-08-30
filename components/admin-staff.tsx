@@ -229,7 +229,7 @@ export function AdminStaff({ initialStaff }: { initialStaff: StaffRow[] }) {
               type="button"
               onClick={() =>
                 copyText(
-                  `BreakingBad33 — accès membre\nPseudo : ${lastIssued.pseudo}\nClé secrète : ${lastIssued.token}\n\nConnexion : page d'accueil → « J'ai déjà une clé »`,
+                  `LaCentral — accès membre\nPseudo : ${lastIssued.pseudo}\nClé secrète : ${lastIssued.token}\n\nConnexion : page d'accueil → « J'ai déjà une clé »`,
                   "full",
                 )
               }

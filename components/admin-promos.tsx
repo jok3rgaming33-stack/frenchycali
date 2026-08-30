@@ -65,7 +65,7 @@ export function AdminPromos() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium">Code</span>
-            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="input font-mono" placeholder="BB33-PROMO" />
+            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="input font-mono" placeholder="LC-PROMO" />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium">Type</span>

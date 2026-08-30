@@ -7,7 +7,7 @@ import { SHOP_IDS, SHOP_LABELS, type ShopId } from "@/lib/shops"
 export const dynamic = "force-dynamic"
 
 export const metadata = {
-  title: "Panel Admin — FrenchyCali",
+  title: "Panel Admin — LaCentral",
   robots: { index: false, follow: false },
 }
 

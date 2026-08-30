@@ -142,9 +142,9 @@ export function DemoShop() {
       <nav className="sticky top-9 z-50 flex items-center justify-between border-b border-white/10 bg-black/80 px-6 py-4 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <div className="relative h-8 w-8 overflow-hidden rounded-lg">
-            <Image src="/images/logoapp.png" alt="BB33" fill className="object-cover" />
+            <Image src="/images/logoapp.png" alt="LaCentral" fill className="object-cover" />
           </div>
-          <span className="text-sm font-bold text-white">BreakingBad33</span>
+          <span className="text-sm font-bold text-white">LaCentral</span>
         </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-zinc-400">

@@ -40,7 +40,7 @@ export async function grantRestoreAccess(
 
   // 1) Push notification (best-effort — le client peut ne pas avoir de subscription active)
   await notifyCustomer(customerToken, {
-    title: "BreakingBad33 — Acces retabli",
+    title: "LaCentral — Acces retabli",
     body: "Ton acces a ete retabli. Appuie sur cette notification pour te reconnecter et definir ton mot de passe.",
     url: restoreUrl,
     tag: "access-restore",
@@ -56,7 +56,7 @@ export async function grantRestoreAccess(
     .then(r => r[0]?.id))
 
   if (targetThreadId) {
-    const msg = `Ton acces a ete retabli par le chimiste.\n\nClique sur ce lien pour te reconnecter et choisir ton nouveau mot de passe :\n\n${restoreUrl}\n\n(Lien valable 24h)`
+    const msg = `Ton acces a ete retabli par le support.\n\nClique sur ce lien pour te reconnecter et choisir ton nouveau mot de passe :\n\n${restoreUrl}\n\n(Lien valable 24h)`
     await db.insert(threadMessages).values({
       threadId: targetThreadId,
       sender: "vendeur",
@@ -118,7 +118,7 @@ export async function loginWithRestoreToken(restoreToken: string): Promise<{
 
   const expired = user.accessRestoreExpires ? user.accessRestoreExpires < new Date() : true
   if (expired) {
-    return { ok: false, error: "Ce lien de rétablissement a expiré. Contacte le chimiste." }
+    return { ok: false, error: "Ce lien de rétablissement a expiré. Contacte le support." }
   }
 
   // Notifie le vendeur que le client a ouvert la notification et se connecte

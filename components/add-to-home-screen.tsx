@@ -151,7 +151,7 @@ export function AddToHomeScreen({ accent = "#ffca28", compact = false }: Props) 
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#f5e8c7" }}>Installer FrenchyCali</h2>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#f5e8c7" }}>Installer LaCentral</h2>
               <button
                 type="button"
                 onClick={() => setIosOpen(false)}

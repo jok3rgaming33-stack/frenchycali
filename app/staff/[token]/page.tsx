@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 
 export const metadata = {
-  title: "Accès membre — BreakingBad33",
+  title: "Accès membre — LaCentral",
   robots: { index: false, follow: false },
 }
 
