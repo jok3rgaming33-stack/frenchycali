@@ -30,6 +30,7 @@ import { revalidatePath } from "next/cache"
 import { isAdminAuthenticated } from "./admin-auth"
 import { isShopId, type ShopId } from "@/lib/shops"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
+import { recordLogin } from "@/app/actions/login-logs"
 
 export type StaffRow = {
   id: number
@@ -406,7 +407,10 @@ export async function repairWhitelistMember(
  * Connexion client : résout le compte à partir de la clé (users OU whitelist)
  * et rattache les conversations au bon pseudo.
  */
-export async function resolveClientLogin(token: string): Promise<{
+export async function resolveClientLogin(
+  token: string,
+  shop?: ShopId | null,
+): Promise<{
   ok: true
   pseudo: string
   token: string
@@ -460,6 +464,7 @@ export async function resolveClientLogin(token: string): Promise<{
       user = { ...user, pseudo: staff.pseudo, flags: [] }
     }
     await reattachAccountThreads(t, staff.pseudo)
+    recordLogin(t, shop && isShopId(shop) ? shop : null).catch(() => {})
     return { ok: true, pseudo: staff.pseudo, token: t }
   }
 
@@ -480,6 +485,7 @@ export async function resolveClientLogin(token: string): Promise<{
       )
   }
 
+  recordLogin(t, shop && isShopId(shop) ? shop : null).catch(() => {})
   return { ok: true, pseudo: user.pseudo, token: t }
 }
 

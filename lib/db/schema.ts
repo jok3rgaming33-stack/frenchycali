@@ -379,7 +379,7 @@ export const productCosts = pgTable("product_costs", {
 
 export type ProductCost = typeof productCosts.$inferSelect
 
-// Journal des connexions client (enregistré à chaque getAccount validé).
+// Journal des connexions client (enregistré à chaque login réussi).
 export const loginLogs = pgTable("login_logs", {
   id: serial("id").primaryKey(),
   userToken: text("user_token").notNull(),
@@ -391,6 +391,8 @@ export const loginLogs = pgTable("login_logs", {
   lat: doublePrecision("lat"),
   lng: doublePrecision("lng"),
   userAgent: text("user_agent"),
+  /** Page boutique où la connexion a eu lieu (caliboyz31 | caliboyz94 | calidelivery). */
+  shop: text("shop"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Copy, CheckCircle2, Loader2, KeyRound, Fingerprint, ScanFace, Eye, EyeOff, AlertTriangle, X, ShieldCheck, MessageCircle } from "lucide-react"
-import { createAccount, getCustomerStats } from "@/app/actions/account"
+import { createAccountOnShop, getCustomerStats } from "@/app/actions/account"
 import { resolveClientLogin } from "@/app/actions/staff"
 import { adminLogin } from "@/app/actions/admin-auth"
 import { verifyHuman } from "@/app/actions/security"
@@ -121,11 +121,11 @@ export function LoginPage({ onSuccess, shop }: Props) {
       const human = await verifyHuman("unavailable")
       if (!human.ok) { setErrorCreate(human.error ?? "Vérification échouée."); return }
       // Retry si collision de pseudo (rare)
-      let res: Awaited<ReturnType<typeof createAccount>> | null = null
+      let res: Awaited<ReturnType<typeof createAccountOnShop>> | null = null
       let pseudo = generatePseudo()
       for (let attempt = 0; attempt < 5; attempt++) {
         pseudo = attempt === 0 ? pseudo : generatePseudo() + String(Math.floor(Math.random() * 90 + 10))
-        res = await createAccount(key, pseudo)
+        res = await createAccountOnShop(key, pseudo, shop)
         if (res.ok) break
         if (!res.error?.includes("déjà pris")) break
       }
@@ -163,7 +163,7 @@ export function LoginPage({ onSuccess, shop }: Props) {
         window.location.href = dest
         return
       }
-      const resolved = await resolveClientLogin(token)
+      const resolved = await resolveClientLogin(token, shop)
       if (!resolved.ok) { setError("Clé secrète invalide ou compte inexistant."); return }
       localStorage.removeItem("isAdmin")
       localStorage.setItem("authToken", resolved.token!); localStorage.setItem("userPseudo", resolved.pseudo!)
@@ -185,7 +185,11 @@ export function LoginPage({ onSuccess, shop }: Props) {
         setBioError(startRes.error); return
       }
       const response = await api.startAuthentication({ optionsJSON: startRes.options })
-      const finishRes = await finishWebAuthnAuthentication({ challengeId: startRes.challengeId, response: response as any })
+      const finishRes = await finishWebAuthnAuthentication({
+        challengeId: startRes.challengeId,
+        response: response as any,
+        shop,
+      })
       if (!finishRes.ok) {
         if (finishRes.clearLocal) clearLocalWebAuthn()
         setBioError(finishRes.error); return

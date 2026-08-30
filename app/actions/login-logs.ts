@@ -1,15 +1,15 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { loginLogs, users, orderThreads } from "@/lib/db/schema"
-import { eq, desc, sql } from "drizzle-orm"
+import { loginLogs, users } from "@/lib/db/schema"
+import { desc, eq, or, sql } from "drizzle-orm"
 import { headers } from "next/headers"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
-import { orderThreadShopEq } from "@/lib/shop-scope"
-import type { ShopId } from "@/lib/shops"
+import { isShopId, type ShopId } from "@/lib/shops"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
+import { orderThreads } from "@/lib/db/schema"
+import { orderThreadShopEq } from "@/lib/shop-scope"
 
-// Géolocalise une IP via ip-api.com (gratuit, pas de clé requise, 45 req/min).
 async function geolocate(ip: string): Promise<{
   city: string | null
   country: string | null
@@ -25,12 +25,16 @@ async function geolocate(ip: string): Promise<{
     ip.startsWith("10.") ||
     ip.startsWith("192.168.") ||
     ip.startsWith("172.")
-  ) return empty
+  )
+    return empty
   try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,city,country,countryCode,lat,lon`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(3000),
-    })
+    const res = await fetch(
+      `http://ip-api.com/json/${ip}?fields=status,city,country,countryCode,lat,lon`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(3000),
+      },
+    )
     if (!res.ok) return empty
     const d = await res.json()
     if (d.status !== "success") return empty
@@ -46,28 +50,29 @@ async function geolocate(ip: string): Promise<{
   }
 }
 
-// Enregistre une connexion client. Appelée côté serveur lors de getAccount().
-// Fire-and-forget : les erreurs sont silencieuses pour ne pas bloquer le client.
-export async function recordLogin(token: string) {
+/**
+ * Enregistre une connexion client sur une page boutique.
+ * Fire-and-forget : ne doit jamais bloquer le login.
+ */
+export async function recordLogin(token: string, shop?: ShopId | null) {
   try {
     const t = token?.trim()
     if (!t) return
+    await ensureOrderThreadsColumns()
 
     const h = await headers()
-
-    // IP
     const forwarded = h.get("x-forwarded-for")
     const ip = (forwarded ? forwarded.split(",")[0]?.trim() : h.get("x-real-ip")?.trim()) ?? null
-
-    // User-Agent
     const userAgent = h.get("user-agent") ?? null
 
-    // Pseudo depuis la base
     const row = await db.select({ pseudo: users.pseudo }).from(users).where(eq(users.token, t)).limit(1)
     const pseudo = row[0]?.pseudo ?? "Inconnu"
 
-    // Géolocalisation (non-bloquant, timeout 3s)
-    const geo = ip ? await geolocate(ip) : { city: null, country: null, countryCode: null, lat: null, lng: null }
+    const geo = ip
+      ? await geolocate(ip)
+      : { city: null, country: null, countryCode: null, lat: null, lng: null }
+
+    const shopVal = shop && isShopId(shop) ? shop : null
 
     await db.insert(loginLogs).values({
       userToken: t,
@@ -79,9 +84,10 @@ export async function recordLogin(token: string) {
       lat: geo.lat,
       lng: geo.lng,
       userAgent,
+      shop: shopVal,
     })
   } catch {
-    // Silencieux — ne jamais bloquer la connexion à cause du log
+    // Silencieux
   }
 }
 
@@ -96,31 +102,43 @@ export type LoginLogRow = {
   lat: number | null
   lng: number | null
   userAgent: string | null
+  shop: string | null
   createdAt: Date | string
 }
 
-// Retourne les N dernières connexions pour le panel admin (boutique uniquement).
+/**
+ * Connexions de la boutique :
+ * - logs tagués `shop = X`
+ * - OU (legacy sans shop) logs d'un client qui a un fil sur X
+ */
 export async function listLoginLogs(shop: ShopId, limit = 200): Promise<LoginLogRow[]> {
   if (!(await isAdminAuthenticated())) return []
   await ensureOrderThreadsColumns()
   const shopCond = orderThreadShopEq(shop)
+
   const rows = await db
     .select()
     .from(loginLogs)
     .where(
-      sql`${loginLogs.userToken} IN (
-        SELECT DISTINCT ${orderThreads.customerToken}
-        FROM ${orderThreads}
-        WHERE ${orderThreads.customerToken} IS NOT NULL
-          AND (${shopCond})
-      )`,
+      or(
+        eq(loginLogs.shop, shop),
+        sql`(
+          ${loginLogs.shop} IS NULL
+          AND ${loginLogs.userToken} IN (
+            SELECT DISTINCT ${orderThreads.customerToken}
+            FROM ${orderThreads}
+            WHERE ${orderThreads.customerToken} IS NOT NULL
+              AND (${shopCond})
+          )
+        )`,
+      ),
     )
     .orderBy(desc(loginLogs.createdAt))
     .limit(limit)
+
   return rows
 }
 
-// Supprime tous les logs d'un token donné (purge cascade, appelé par purgeUserData).
 export async function deleteLoginLogsByToken(token: string) {
   await db.delete(loginLogs).where(eq(loginLogs.userToken, token))
 }

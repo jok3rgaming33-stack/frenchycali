@@ -88,16 +88,24 @@ export async function createAccount(token: string, pseudo: string) {
   return { ok: true as const, pseudo: p }
 }
 
+/** Crée un compte et journalise la 1ère connexion sur la boutique. */
+export async function createAccountOnShop(token: string, pseudo: string, shop: ShopId) {
+  const res = await createAccount(token, pseudo)
+  if (res.ok) {
+    recordLogin(token.trim(), shop).catch(() => {})
+  }
+  return res
+}
+
 // Récupère le compte associé à une clé secrète (connexion d'un client existant).
-// Enregistre la connexion dans login_logs (fire-and-forget).
-export async function getAccount(token: string) {
+// Enregistre la connexion dans login_logs (fire-and-forget) si shop fourni.
+export async function getAccount(token: string, shop?: ShopId | null) {
   const t = token?.trim()
   if (!t) return null
   const rows = await db.select().from(users).where(eq(users.token, t)).limit(1)
   const account = rows[0] ?? null
   if (account) {
-    // Fire-and-forget : ne bloque pas la réponse
-    recordLogin(t).catch(() => {})
+    recordLogin(t, shop ?? null).catch(() => {})
   }
   return account
 }

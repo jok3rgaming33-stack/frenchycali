@@ -40,6 +40,10 @@ const BROADCAST_COLUMNS = [
   `ALTER TABLE broadcast_notifications ADD COLUMN IF NOT EXISTS shop TEXT`,
 ] as const
 
+const LOGIN_LOG_COLUMNS = [
+  `ALTER TABLE login_logs ADD COLUMN IF NOT EXISTS shop TEXT`,
+] as const
+
 /** Remplit shops depuis shop pour les comptes créés avant le multi-pages. */
 const BACKFILL_ADMIN_SHOPS = `
   UPDATE admin_accounts
@@ -79,6 +83,7 @@ export async function ensureOrderThreadsColumns(): Promise<void> {
       ...ADMIN_ACCOUNT_COLUMNS,
       ...STAFF_COLUMNS,
       ...BROADCAST_COLUMNS,
+      ...LOGIN_LOG_COLUMNS,
     ]) {
       try {
         await pool!.query(stmt)

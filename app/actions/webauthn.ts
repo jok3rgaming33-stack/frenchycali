@@ -400,6 +400,8 @@ export async function startWebAuthnAuthentication(credentialIds?: string[]): Pro
 export async function finishWebAuthnAuthentication(input: {
   challengeId: string
   response: AuthenticationResponseJSON
+  /** Page boutique pour journaliser la connexion. */
+  shop?: string | null
 }): Promise<
   | { ok: true; token: string; pseudo: string }
   | { ok: false; error: string; clearLocal?: boolean }
@@ -491,6 +493,15 @@ export async function finishWebAuthnAuthentication(input: {
       } catch {
         /* non bloquant pour la connexion */
       }
+    }
+
+    try {
+      const { recordLogin } = await import("@/app/actions/login-logs")
+      const { isShopId } = await import("@/lib/shops")
+      const shop = input.shop && isShopId(input.shop) ? input.shop : null
+      recordLogin(account[0].token, shop).catch(() => {})
+    } catch {
+      /* ignore */
     }
 
     return {
