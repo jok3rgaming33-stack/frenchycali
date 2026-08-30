@@ -252,6 +252,15 @@ async function placeOrderInner(input: PlaceOrderInput) {
     scheduledDate: scheduledDate || null,
     scheduledSlot: scheduledSlot || null,
     status: "en_attente" as const,
+    // Devise + wallet dès l'insert (évite un UPDATE qui peut échouer silencieusement)
+    ...(selectedPayCurrency
+      ? {
+          paymentCrypto: selectedPayCurrency,
+          paymentStatus: "awaiting",
+          paymentAmountEur: Math.round(total),
+          xmrWallet: walletAddress,
+        }
+      : {}),
   }
 
   let thread: typeof orderThreads.$inferSelect | undefined

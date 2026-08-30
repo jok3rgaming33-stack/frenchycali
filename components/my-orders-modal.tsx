@@ -14,8 +14,7 @@ import {
   confirmParcelReceived,
   reportParcelIssue,
 } from "@/app/actions/messaging"
-import { statusMeta, isClosedStatus, parcelConcernUnlockAt } from "@/lib/order-status"
-import { isParcelFulfillment } from "@/lib/shops"
+import { statusMeta, isClosedStatus, getParcelClientActions } from "@/lib/order-status"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 import { BlobMedia } from "@/components/blob-media"
@@ -325,28 +324,18 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
 
   if (!isOpen) return null
 
-  // Fil TRK sélectionné : affichage spécial avertissement
   const isTrkSelected = selected && isTrkMessage(selected)
-  // Fil locker legacy OU commande colis avec devise crypto
-  const isLockerSelected = selected && selected.fulfillment === "locker" && !isTrkMessage(selected)
-  const isCryptoPayOrder =
-    !!selected &&
-    !isTrkMessage(selected) &&
-    !!(selected.paymentCrypto || selected.xmrWallet) &&
-    !isClosedStatus(selected.status)
-  const showDepositZone = (isLockerSelected || isCryptoPayOrder) && !!selected
-  const payWallet = selected?.xmrWallet ?? null
-  const payCryptoLabel = (selected?.paymentCrypto || (isLockerSelected ? "xmr" : "") || "crypto").toUpperCase()
-  const depositAlreadyNotified = selected?.depositNotified ?? false
-  const depositAlreadyConfirmed = selected?.depositConfirmed ?? false
-  const isShippedParcel =
-    !!selected &&
-    isParcelFulfillment(selected.fulfillment) &&
-    (selected.status === "locker_expedie" || selected.status === "souci_livraison")
-  const concernUnlock = selected
-    ? parcelConcernUnlockAt(selected.shippedAt, selected.fulfillment)
-    : null
-  const concernEnabled = !!(concernUnlock && Date.now() >= concernUnlock.getTime())
+  const parcelActions = selected && !isTrkMessage(selected) ? getParcelClientActions(selected) : null
+  const showDepositZone = !!parcelActions?.showDeposit
+  const payWallet = parcelActions?.wallet ?? null
+  const payCryptoLabel = parcelActions?.payLabel ?? "CRYPTO"
+  const depositAlreadyNotified = parcelActions?.depositNotified ?? false
+  const depositAlreadyConfirmed = parcelActions?.depositConfirmed ?? false
+  const isShippedParcel = !!parcelActions?.isShipped
+  const concernUnlock = parcelActions?.concernUnlock ?? null
+  const concernEnabled = parcelActions?.concernEnabled ?? false
+  const showReceiveBtn = parcelActions?.showReceive ?? false
+  const trackingNumber = parcelActions?.tracking ?? null
 
   return (
     <div
@@ -616,7 +605,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                   <button
                     type="button"
                     onClick={handleDeposit}
-                    disabled={depositSending || (!payWallet && !selected?.paymentCrypto)}
+                    disabled={depositSending}
                     className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {depositSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -640,13 +629,13 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
             {/* Après expédition : réception / souci */}
             {isShippedParcel && selected && (
               <div className="border-t border-border p-4 space-y-3">
-                {selected.colissimoNumber && (
+                {trackingNumber && (
                   <div className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-xs text-muted-foreground">
                     N° de suivi :{" "}
-                    <span className="font-mono font-semibold text-foreground">{selected.colissimoNumber}</span>
+                    <span className="font-mono font-semibold text-foreground">{trackingNumber}</span>
                   </div>
                 )}
-                {selected.status === "locker_expedie" && (
+                {showReceiveBtn && (
                   <button
                     type="button"
                     onClick={handleConfirmReceived}

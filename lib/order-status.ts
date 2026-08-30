@@ -47,6 +47,71 @@ export function parcelConcernUnlockAt(
   return d
 }
 
+/** Extrait la devise depuis le récap (« Paiement : BTC ») si la colonne est vide. */
+export function paymentCryptoFromSummary(summary: string | null | undefined): string | null {
+  if (!summary) return null
+  const m = summary.match(/Paiement\s*:\s*([A-Za-z0-9]+)/i)
+  return m?.[1]?.toLowerCase() || null
+}
+
+/**
+ * Visibilité des actions client sur une commande colis.
+ * Source unique pour OrderTracker + MyOrdersModal.
+ */
+export function getParcelClientActions(order: {
+  fulfillment?: string | null
+  status?: string | null
+  paymentCrypto?: string | null
+  xmrWallet?: string | null
+  depositNotified?: boolean | null
+  depositConfirmed?: boolean | null
+  shippedAt?: Date | string | null
+  summary?: string | null
+  colissimoNumber?: string | null
+}) {
+  const fulfillment = order.fulfillment ?? ""
+  const status = normalizeStatus(order.status)
+  const pay =
+    (order.paymentCrypto || paymentCryptoFromSummary(order.summary) || "").toLowerCase() || null
+  const isParcel =
+    fulfillment !== "meetup" &&
+    fulfillment !== "livraison" &&
+    fulfillment.trim().length > 0
+
+  const awaitingPayment =
+    isParcel &&
+    !order.depositConfirmed &&
+    status !== "locker_expedie" &&
+    status !== "souci_livraison" &&
+    status !== "livree" &&
+    status !== "locker_livre" &&
+    status !== "annulee" &&
+    status !== "preparation"
+
+  const showDeposit = awaitingPayment || (isParcel && !!order.depositNotified && !order.depositConfirmed)
+  const showPrepBanner = isParcel && !!order.depositConfirmed && status === "preparation"
+  const isShipped = isParcel && (status === "locker_expedie" || status === "souci_livraison")
+  const concernUnlock = parcelConcernUnlockAt(order.shippedAt, fulfillment)
+  const concernEnabled = !!(concernUnlock && Date.now() >= concernUnlock.getTime())
+
+  return {
+    isParcel,
+    payCrypto: pay,
+    payLabel: (pay || "crypto").toUpperCase(),
+    wallet: order.xmrWallet?.trim() || null,
+    showDeposit,
+    showPrepBanner,
+    isShipped,
+    showReceive: isShipped && status === "locker_expedie",
+    showIssue: isShipped,
+    concernUnlock,
+    concernEnabled,
+    tracking: order.colissimoNumber?.trim() || null,
+    depositNotified: !!order.depositNotified,
+    depositConfirmed: !!order.depositConfirmed,
+  }
+}
+
 export type OrderStatusKey =
   | "discussion"
   | "pris_en_charge"

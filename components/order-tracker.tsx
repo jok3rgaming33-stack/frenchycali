@@ -9,8 +9,7 @@ import {
   reportParcelIssue,
 } from "@/app/actions/messaging"
 import type { OrderThread, ThreadMessage } from "@/lib/db/schema"
-import { statusMeta, parcelConcernUnlockAt, isClosedStatus } from "@/lib/order-status"
-import { isParcelFulfillment } from "@/lib/shops"
+import { statusMeta, getParcelClientActions } from "@/lib/order-status"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 
@@ -128,20 +127,19 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
   const textMuted = "rgba(200,190,170,.7)"
 
   if (selected) {
-    const isParcel = isParcelFulfillment(selected.fulfillment)
-    const showDeposit =
-      isParcel &&
-      !!(selected.paymentCrypto || selected.xmrWallet) &&
-      !isClosedStatus(selected.status) &&
-      !selected.depositConfirmed
-    const showPrepBanner =
-      isParcel && selected.depositConfirmed && selected.status === "preparation"
-    const isShipped =
-      isParcel &&
-      (selected.status === "locker_expedie" || selected.status === "souci_livraison")
-    const concernUnlock = parcelConcernUnlockAt(selected.shippedAt, selected.fulfillment)
-    const concernEnabled = !!(concernUnlock && Date.now() >= concernUnlock.getTime())
-    const payLabel = (selected.paymentCrypto || "crypto").toUpperCase()
+    const actions = getParcelClientActions(selected)
+    const {
+      showDeposit,
+      showPrepBanner,
+      isShipped,
+      showReceive,
+      concernUnlock,
+      concernEnabled,
+      payLabel,
+      wallet,
+      depositNotified,
+      tracking,
+    } = actions
 
     return (
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px" }} className="shop-main-pad">
@@ -247,10 +245,10 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
             ))}
           </div>
 
-          {/* Virement crypto */}
+          {/* Étape 1 : virement crypto */}
           {showDeposit && (
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10 }}>
-              {selected.xmrWallet && (
+              {wallet && (
                 <div
                   style={{
                     borderRadius: 14,
@@ -263,11 +261,11 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
                     Adresse {payLabel}
                   </p>
                   <p style={{ margin: 0, fontFamily: "monospace", fontSize: 12, color: textMain, wordBreak: "break-all" }}>
-                    {selected.xmrWallet}
+                    {wallet}
                   </p>
                 </div>
               )}
-              {!selected.depositNotified ? (
+              {!depositNotified ? (
                 <button
                   type="button"
                   onClick={handleDeposit}
@@ -295,22 +293,23 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
             </div>
           )}
 
+          {/* Étape 2 : préparation */}
           {showPrepBanner && (
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, textAlign: "center", fontSize: 13, fontWeight: 700, color: accentColor }}>
               Virement reçu — commande en préparation
             </div>
           )}
 
-          {/* Réception / souci après expédition */}
+          {/* Étape 3 : réception / souci */}
           {isShipped && (
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${cardBorder}`, display: "flex", flexDirection: "column", gap: 10 }}>
-              {selected.colissimoNumber && (
+              {tracking && (
                 <p style={{ margin: 0, fontSize: 12, color: textMuted }}>
                   N° de suivi :{" "}
-                  <strong style={{ color: textMain, fontFamily: "monospace" }}>{selected.colissimoNumber}</strong>
+                  <strong style={{ color: textMain, fontFamily: "monospace" }}>{tracking}</strong>
                 </p>
               )}
-              {selected.status === "locker_expedie" && (
+              {showReceive && (
                 <button
                   type="button"
                   onClick={handleConfirmReceived}
