@@ -14,7 +14,7 @@ import {
   confirmParcelReceived,
   reportParcelIssue,
 } from "@/app/actions/messaging"
-import { statusMeta, isClosedStatus, getParcelClientActions } from "@/lib/order-status"
+import { statusMeta, isClosedStatus, getParcelClientActions, normalizeStatus } from "@/lib/order-status"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 import { BlobMedia } from "@/components/blob-media"
@@ -326,17 +326,29 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
   if (!isOpen) return null
 
   const isTrkSelected = selected && isTrkMessage(selected)
+  const statusKey = selected ? normalizeStatus(selected.status) : null
+  // Condition ULTRA directe — ne dépend pas seulement du helper (évite tout faux négatif)
+  const endCycle =
+    !!selected &&
+    !isTrkSelected &&
+    (statusKey === "locker_expedie" ||
+      statusKey === "souci_livraison" ||
+      selected.status === "locker_expedie" ||
+      selected.status === "souci_livraison")
   const parcelActions = selected && !isTrkMessage(selected) ? getParcelClientActions(selected) : null
-  const showDepositZone = !!parcelActions?.showDeposit
+  const showDepositZone = !!parcelActions?.showDeposit && !endCycle
   const payWallet = parcelActions?.wallet ?? null
   const payCryptoLabel = parcelActions?.payLabel ?? "CRYPTO"
   const depositAlreadyNotified = parcelActions?.depositNotified ?? false
   const depositAlreadyConfirmed = parcelActions?.depositConfirmed ?? false
-  const isShippedParcel = !!parcelActions?.isShipped
+  const isShippedParcel = endCycle || !!parcelActions?.isShipped
   const concernUnlock = parcelActions?.concernUnlock ?? null
-  const concernEnabled = parcelActions?.concernEnabled ?? false
-  const showReceiveBtn = parcelActions?.showReceive ?? false
-  const trackingNumber = parcelActions?.tracking ?? null
+  const concernEnabled = endCycle
+    ? !concernUnlock || Date.now() >= concernUnlock.getTime()
+    : (parcelActions?.concernEnabled ?? false)
+  const showReceiveBtn = statusKey === "locker_expedie" || selected?.status === "locker_expedie"
+  const trackingNumber =
+    parcelActions?.tracking ?? selected?.colissimoNumber?.trim() ?? null
 
   return (
     <div
@@ -347,7 +359,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
     >
       <div className="modal-shell w-full max-w-md rounded-3xl border border-accent/40 bg-card">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border p-6">
+        <div className="flex shrink-0 items-center justify-between border-b border-border p-6" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             {selected && (
               <button
@@ -383,6 +395,47 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
+
+        {/* Actions fin de cycle — collées sous le header (hors zone scroll, jamais clipées) */}
+        {selected && isShippedParcel && (
+          <div
+            className="shrink-0 space-y-2 border-b border-accent/40 bg-accent/10 px-4 py-3"
+            style={{ flexShrink: 0 }}
+          >
+            {trackingNumber ? (
+              <p className="text-center text-[11px] text-muted-foreground">
+                Suivi : <span className="font-mono font-semibold text-foreground">{trackingNumber}</span>
+              </p>
+            ) : null}
+            {showReceiveBtn ? (
+              <button
+                type="button"
+                onClick={handleConfirmReceived}
+                disabled={receiveSending}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-sm font-bold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {receiveSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                J&apos;ai bien reçu mon colis
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleReportIssue}
+              disabled={!concernEnabled || issueSending || selected.status === "souci_livraison" || statusKey === "souci_livraison"}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-background/80 py-3 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-secondary"
+            >
+              {issueSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {statusKey === "souci_livraison" || selected.status === "souci_livraison"
+                ? "Souci déjà signalé — écris ci-dessous"
+                : "J'ai un souci avec ma livraison"}
+            </button>
+            {!concernEnabled && concernUnlock && showReceiveBtn ? (
+              <p className="text-center text-[11px] text-muted-foreground">
+                Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
+              </p>
+            ) : null}
+          </div>
+        )}
 
         {/* Liste */}
         {!selected && (
@@ -633,52 +686,6 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                 <div className="rounded-2xl border border-accent/40 bg-accent/10 px-4 py-3 text-center text-sm font-semibold text-accent">
                   Virement reçu — ta commande est en préparation.
                 </div>
-              </div>
-            )}
-
-            {/* Après expédition : réception / souci — toujours visible */}
-            {isShippedParcel && selected && (
-              <div className="border-t border-accent/40 bg-accent/5 p-4 space-y-3">
-                {trackingNumber && (
-                  <div className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-xs text-muted-foreground">
-                    N° de suivi :{" "}
-                    <span className="font-mono font-semibold text-foreground">{trackingNumber}</span>
-                  </div>
-                )}
-                {showReceiveBtn && (
-                  <button
-                    type="button"
-                    onClick={handleConfirmReceived}
-                    disabled={receiveSending}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3.5 text-sm font-bold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    {receiveSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    J&apos;ai bien reçu mon colis
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleReportIssue}
-                  disabled={!concernEnabled || issueSending || selected.status === "souci_livraison"}
-                  title={
-                    concernEnabled
-                      ? "Signaler un problème de livraison"
-                      : concernUnlock
-                        ? `Disponible à partir du ${concernUnlock.toLocaleDateString("fr-FR")}`
-                        : "Disponible après le délai transporteur"
-                  }
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border py-3 text-sm font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed hover:bg-secondary"
-                >
-                  {issueSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {selected.status === "souci_livraison"
-                    ? "Souci déjà signalé — écris ci-dessous"
-                    : "J'ai un souci avec ma livraison"}
-                </button>
-                {!concernEnabled && concernUnlock && selected.status === "locker_expedie" && (
-                  <p className="text-center text-[11px] text-muted-foreground">
-                    Bouton souci disponible le {concernUnlock.toLocaleDateString("fr-FR")}
-                  </p>
-                )}
               </div>
             )}
 
