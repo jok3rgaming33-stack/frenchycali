@@ -11,7 +11,7 @@ import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { statusMeta, statusThreadMessage } from "@/lib/order-status"
 import { ensureRatingsSchema } from "@/app/actions/ratings"
 import { buildRatingInviteMessage } from "@/lib/order-items"
-import { getEnabledCryptoCurrencies } from "@/app/actions/crypto-payment"
+import { getCryptoWalletAddress, getEnabledCryptoCurrencies } from "@/app/actions/crypto-payment"
 import { getEnabledParcelServices, getParcelServices } from "@/app/actions/settings"
 import {
   LOCAL_FULFILLMENTS,
@@ -341,12 +341,14 @@ async function placeOrderInner(input: PlaceOrderInput) {
       return { ok: false as const, error: "Cette devise n'est pas disponible." }
     }
     selectedPayCurrency = payCurrency
+    const walletAddress = await getCryptoWalletAddress(payCurrency)
     try {
       await db.execute(sql`
         UPDATE order_threads SET
           payment_crypto = ${payCurrency},
           payment_status = 'awaiting',
           payment_amount_eur = ${Math.round(total)},
+          xmr_wallet = ${walletAddress},
           updated_at = NOW()
         WHERE id = ${thread.id}
       `)
@@ -354,17 +356,31 @@ async function placeOrderInner(input: PlaceOrderInput) {
       console.error("[placeOrder] persist pay currency:", e)
     }
     try {
+      const bodyLines = [
+        `💳 Devise de paiement choisie : ${payCurrency.toUpperCase()}`,
+        ``,
+        `Total commande : ${total}€`,
+      ]
+      if (walletAddress) {
+        bodyLines.push(
+          ``,
+          `Adresse de réception (${payCurrency.toUpperCase()}) :`,
+          walletAddress,
+          ``,
+          `Envoie exactement le montant correspondant depuis ton portefeuille.`,
+          `Une fois le virement effectué, clique sur « J'ai fait le virement » dans le suivi de commande.`,
+        )
+      } else {
+        bodyLines.push(
+          ``,
+          `L'adresse de paiement sera communiquée ici sous peu par le vendeur.`,
+          `Règle uniquement depuis ton propre portefeuille, dans la devise indiquée.`,
+        )
+      }
       await db.insert(threadMessages).values({
         threadId: thread.id,
         sender: "vendeur",
-        body: [
-          `💳 Devise de paiement choisie : ${payCurrency.toUpperCase()}`,
-          ``,
-          `Total commande : ${total}€`,
-          ``,
-          `Le vendeur va te communiquer les instructions de paiement (adresse / montant) ici.`,
-          `Règle uniquement depuis ton propre portefeuille, dans la devise indiquée.`,
-        ].join("\n"),
+        body: bodyLines.join("\n"),
       })
     } catch (e) {
       console.error("[placeOrder] crypto choice message:", e)

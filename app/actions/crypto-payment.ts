@@ -23,13 +23,15 @@ export type CryptoGatewayPublicStatus = {
   message: string
 }
 
-/** Crypto proposée au checkout CaliDelivery (codes NOWPayments). */
+/** Crypto proposée au checkout CaliDelivery. */
 export type CryptoCurrencyOption = {
   id: string
-  /** Code API NOWPayments : btc, eth, xmr, usdttrc20… */
+  /** Code court : btc, eth, xmr, usdt… */
   code: string
   name: string
   enabled: boolean
+  /** Adresse wallet affichée au client après commande (vide = pas encore renseignée). */
+  address?: string | null
 }
 
 const SETTINGS_KEY = "crypto_gateway"
@@ -43,14 +45,14 @@ type GatewaySettings = {
 const DEFAULT_SETTINGS: GatewaySettings = { enabled: true }
 
 const DEFAULT_CURRENCIES: CryptoCurrencyOption[] = [
-  { id: "btc", code: "btc", name: "Bitcoin (BTC)", enabled: true },
-  { id: "eth", code: "eth", name: "Ethereum (ETH)", enabled: true },
-  { id: "xmr", code: "xmr", name: "Monero (XMR)", enabled: true },
-  { id: "usdttrc20", code: "usdttrc20", name: "USDT (TRC20)", enabled: true },
-  { id: "usdterc20", code: "usdterc20", name: "USDT (ERC20)", enabled: true },
-  { id: "ltc", code: "ltc", name: "Litecoin (LTC)", enabled: true },
-  { id: "sol", code: "sol", name: "Solana (SOL)", enabled: false },
-  { id: "bnbbsc", code: "bnbbsc", name: "BNB (BSC)", enabled: false },
+  { id: "btc", code: "btc", name: "Bitcoin (BTC)", enabled: true, address: "" },
+  { id: "eth", code: "eth", name: "Ethereum (ETH)", enabled: true, address: "" },
+  { id: "xmr", code: "xmr", name: "Monero (XMR)", enabled: true, address: "" },
+  { id: "usdttrc20", code: "usdttrc20", name: "USDT (TRC20)", enabled: true, address: "" },
+  { id: "usdterc20", code: "usdterc20", name: "USDT (ERC20)", enabled: true, address: "" },
+  { id: "ltc", code: "ltc", name: "Litecoin (LTC)", enabled: true, address: "" },
+  { id: "sol", code: "sol", name: "Solana (SOL)", enabled: false, address: "" },
+  { id: "bnbbsc", code: "bnbbsc", name: "BNB (BSC)", enabled: false, address: "" },
 ]
 
 async function ensurePaymentColumns() {
@@ -80,9 +82,20 @@ function normalizeCurrencies(raw: unknown): CryptoCurrencyOption[] {
     const name = String(o.name ?? code).trim()
     if (!code || !name) continue
     const id = String(o.id ?? code).trim().toLowerCase() || code
-    out.push({ id, code, name, enabled: o.enabled !== false })
+    const address = o.address != null ? String(o.address).trim() : ""
+    out.push({ id, code, name, enabled: o.enabled !== false, address: address || null })
   }
   return out
+}
+
+/** Adresse wallet admin pour une devise (null si absente / désactivée). */
+export async function getCryptoWalletAddress(code: string): Promise<string | null> {
+  const c = (code ?? "").trim().toLowerCase()
+  if (!c) return null
+  const all = await getCryptoCurrencies()
+  const found = all.find((x) => x.code === c && x.enabled)
+  const addr = found?.address?.trim()
+  return addr || null
 }
 
 /** Statut public (admin + client) — n'expose jamais les secrets. */

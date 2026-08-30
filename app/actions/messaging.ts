@@ -837,27 +837,31 @@ export async function sendXmrWallet(threadId: number, wallet: string) {
   return { ok: true as const }
 }
 
-// Client : signale que son depot XMR est effectue.
+// Client : signale que le virement crypto / dépôt est effectué.
 export async function notifyDeposit(threadId: number) {
   if (!threadId) return { ok: false as const }
   const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId))
   if (!thread) return { ok: false as const }
+  if (thread.depositNotified) return { ok: true as const }
 
+  const crypto = (thread.paymentCrypto || "crypto").toUpperCase()
   await db.update(orderThreads).set({ depositNotified: true, updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
   await db.insert(threadMessages).values({
     threadId,
     sender: "client",
-    body: "J'ai effectue mon depot XMR. Merci de verifier la reception.",
+    body: `✅ J'ai fait le virement en ${crypto}. Merci de vérifier la réception.`,
   })
 
+  const shopPath = thread.shop && isShopId(thread.shop) ? `/admin/${thread.shop}` : "/admin"
   await notifyVendor({
-    title: `Depot XMR signale — Commande #${threadId}`,
-    body: `${thread.customerName} signale avoir effectue son depot Monero.`,
-    url: "/admin",
+    title: `Virement ${crypto} signalé — #${threadId}`,
+    body: `${thread.customerName} indique avoir envoyé le paiement (${crypto} · ${thread.total}€).`,
+    url: shopPath,
     tag: `deposit-${threadId}`,
   })
 
   revalidatePath("/admin")
+  if (thread.shop && isShopId(thread.shop)) revalidatePath(`/admin/${thread.shop}`)
   return { ok: true as const }
 }
 
@@ -968,27 +972,41 @@ export async function updateOrderProducts(threadId: number, items: OrderProductI
   return { ok: true as const, newTotal, newSummary }
 }
 
-// Admin : confirme la reception du depot XMR et lance la preparation.
+// Admin : confirme la réception du virement et passe en préparation.
 export async function confirmDeposit(threadId: number) {
   if (!threadId) return { ok: false as const }
   const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId))
   if (!thread) return { ok: false as const }
+  if (thread.depositConfirmed) return { ok: true as const }
 
-  await db.update(orderThreads).set({ depositConfirmed: true, status: "preparation", updatedAt: sql`now()` }).where(eq(orderThreads.id, threadId))
+  const crypto = (thread.paymentCrypto || "crypto").toUpperCase()
+  await db
+    .update(orderThreads)
+    .set({
+      depositConfirmed: true,
+      depositNotified: true,
+      status: "preparation",
+      paymentStatus: "confirmed",
+      updatedAt: sql`now()`,
+    })
+    .where(eq(orderThreads.id, threadId))
   await db.insert(threadMessages).values({
     threadId,
     sender: "vendeur",
-    body: "Depot Monero recu et confirme. La preparation de ton colis est en cours — tu recevras une mise a jour des la mise en expedition.",
+    body: `✅ Virement ${crypto} reçu. Ta commande passe en préparation — tu seras tenu informé de la suite.`,
   })
 
-  await notifyCustomer(thread.customerToken, {
-    title: "Depot recu — preparation en cours",
-    body: "Ton depot XMR a ete confirme. Ton colis est en preparation.",
-    url: "/",
-    tag: `prep-${threadId}`,
-  })
+  if (thread.customerToken) {
+    await notifyCustomer(thread.customerToken, {
+      title: "Virement reçu — préparation",
+      body: `Ton paiement ${crypto} est confirmé. Commande #${threadId} en cours de préparation.`,
+      url: "/",
+      tag: `prep-${threadId}`,
+    })
+  }
 
   revalidatePath("/admin")
+  if (thread.shop && isShopId(thread.shop)) revalidatePath(`/admin/${thread.shop}`)
   return { ok: true as const }
 }
 

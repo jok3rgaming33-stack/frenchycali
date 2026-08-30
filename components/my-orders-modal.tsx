@@ -63,6 +63,7 @@ type Thread = {
   depositNotified?: boolean
   depositConfirmed?: boolean
   xmrWallet?: string | null
+  paymentCrypto?: string | null
   createdAt: Date | string
   updatedAt: Date | string
 }
@@ -236,7 +237,10 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
     try {
       await notifyDeposit(selected.id)
       setDepositSent(true)
-      // Recharger les messages
+      setSelected((s) => (s ? { ...s, depositNotified: true } : s))
+      setThreads((prev) =>
+        prev.map((t) => (t.id === selected.id ? { ...t, depositNotified: true } : t)),
+      )
       const data = await getThread(selected.id)
       if (data) setMessages(data.messages as Message[])
     } finally {
@@ -277,12 +281,18 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
 
   // Fil TRK sélectionné : affichage spécial avertissement
   const isTrkSelected = selected && isTrkMessage(selected)
-  // Fil locker normal sélectionné
+  // Fil locker legacy OU commande colis avec devise crypto
   const isLockerSelected = selected && selected.fulfillment === "locker" && !isTrkMessage(selected)
-  // Wallet XMR disponible dans le fil locker sélectionné
-  const xmrWallet = (selected as any)?.xmrWallet ?? null
-  const depositAlreadyNotified = (selected as any)?.depositNotified ?? false
-  const depositAlreadyConfirmed = (selected as any)?.depositConfirmed ?? false
+  const isCryptoPayOrder =
+    !!selected &&
+    !isTrkMessage(selected) &&
+    !!(selected.paymentCrypto || selected.xmrWallet) &&
+    !isClosedStatus(selected.status)
+  const showDepositZone = (isLockerSelected || isCryptoPayOrder) && !!selected
+  const payWallet = selected?.xmrWallet ?? null
+  const payCryptoLabel = (selected?.paymentCrypto || (isLockerSelected ? "xmr" : "") || "crypto").toUpperCase()
+  const depositAlreadyNotified = selected?.depositNotified ?? false
+  const depositAlreadyConfirmed = selected?.depositConfirmed ?? false
 
   return (
     <div
@@ -534,30 +544,41 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
               )}
             </div>
 
-            {/* Zone depot XMR (locker avec wallet communiqué, depot pas encore signalé) */}
-            {isLockerSelected && xmrWallet && !depositAlreadyConfirmed && (
-              <div className="border-t border-border p-4">
+            {/* Zone paiement crypto / dépôt (adresse + bouton virement) */}
+            {showDepositZone && !depositAlreadyConfirmed && (
+              <div className="border-t border-border p-4 space-y-3">
+                {payWallet && (
+                  <div className="rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-accent">
+                      Adresse {payCryptoLabel}
+                    </p>
+                    <p className="break-all font-mono text-xs text-foreground">{payWallet}</p>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Total : <strong>{selected?.total}€</strong> — envoie depuis ton portefeuille.
+                    </p>
+                  </div>
+                )}
                 {!depositAlreadyNotified && !depositSent ? (
                   <button
                     type="button"
                     onClick={handleDeposit}
-                    disabled={depositSending}
+                    disabled={depositSending || (!payWallet && !selected?.paymentCrypto)}
                     className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {depositSending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    J&apos;ai effectué mon dépôt XMR
+                    J&apos;ai fait le virement
                   </button>
                 ) : (
                   <div className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-center text-sm text-muted-foreground">
-                    Dépôt signalé — en attente de confirmation par le vendeur.
+                    Virement signalé — en attente de confirmation par le vendeur.
                   </div>
                 )}
               </div>
             )}
-            {isLockerSelected && depositAlreadyConfirmed && (
+            {showDepositZone && depositAlreadyConfirmed && (
               <div className="border-t border-border p-4">
                 <div className="rounded-2xl border border-accent/40 bg-accent/10 px-4 py-3 text-center text-sm font-semibold text-accent">
-                  Dépôt confirmé — ton colis est en préparation.
+                  Virement reçu — ta commande est en préparation.
                 </div>
               </div>
             )}

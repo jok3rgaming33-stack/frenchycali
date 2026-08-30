@@ -9,9 +9,8 @@ import {
 } from "@/app/actions/crypto-payment"
 
 /**
- * Devises proposées au checkout CaliDelivery.
- * Le client choisit sa crypto et paie depuis son propre portefeuille
- * (pas de gateway / NOWPayments / ChangeNOW).
+ * Devises + adresses wallet proposées au checkout CaliDelivery.
+ * Le client reçoit l'adresse automatiquement selon son choix.
  */
 export function AdminCryptoSettings() {
   const [currencies, setCurrencies] = useState<CryptoCurrencyOption[] | null>(null)
@@ -40,7 +39,7 @@ export function AdminCryptoSettings() {
     const id = `c_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`
     setCurrencies((prev) => [
       ...(prev ?? []),
-      { id, code: "", name: "Nouvelle devise", enabled: true },
+      { id, code: "", name: "Nouvelle devise", enabled: true, address: "" },
     ])
   }
 
@@ -53,6 +52,7 @@ export function AdminCryptoSettings() {
       code: c.code.trim().toLowerCase(),
       name: c.name.trim(),
       id: (c.id || c.code).trim().toLowerCase(),
+      address: (c.address ?? "").toString().trim() || null,
     }))
     const cur = await setCryptoCurrencies(cleaned)
     setSaving(false)
@@ -80,21 +80,17 @@ export function AdminCryptoSettings() {
             <Wallet className="h-5 w-5" />
           </span>
           <div>
-            <h3 className="text-lg font-bold">Devises de paiement</h3>
+            <h3 className="text-lg font-bold">Devises &amp; adresses</h3>
             <p className="text-sm text-muted-foreground">
-              Cryptos proposées au client sur CaliDelivery. Le client choisit sa devise au panier et
-              règle depuis <strong>son propre portefeuille</strong> — tu lui envoies les instructions
-              (adresse / montant) en messagerie.
+              Renseigne l&apos;adresse wallet pour chaque crypto. Elle est envoyée automatiquement au
+              client dès qu&apos;il choisit cette devise à la commande.
             </p>
           </div>
         </div>
 
         <div className="mb-4 flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Active / désactive, ajoute ou supprime. Code court (ex.{" "}
-            <code className="rounded bg-black/30 px-1">btc</code>,{" "}
-            <code className="rounded bg-black/30 px-1">xmr</code>,{" "}
-            <code className="rounded bg-black/30 px-1">usdt</code>).
+            Active / désactive, ajoute ou supprime. Sans adresse, le client devra attendre ton message.
           </p>
           <button
             type="button"
@@ -110,37 +106,50 @@ export function AdminCryptoSettings() {
           {currencies.map((c) => (
             <li
               key={c.id}
-              className="flex flex-col gap-2 rounded-xl border border-border bg-background/40 p-3 sm:flex-row sm:items-center"
+              className="flex flex-col gap-2 rounded-xl border border-border bg-background/40 p-3"
             >
-              <label className="flex items-center gap-2 text-xs font-medium">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <input
+                    type="checkbox"
+                    checked={c.enabled}
+                    onChange={(e) => updateCurrency(c.id, { enabled: e.target.checked })}
+                    className="h-4 w-4 accent-[var(--color-accent,#00ff9d)]"
+                  />
+                  Actif
+                </label>
                 <input
-                  type="checkbox"
-                  checked={c.enabled}
-                  onChange={(e) => updateCurrency(c.id, { enabled: e.target.checked })}
-                  className="h-4 w-4 accent-[var(--color-accent,#00ff9d)]"
+                  value={c.name}
+                  onChange={(e) => updateCurrency(c.id, { name: e.target.value })}
+                  placeholder="Nom affiché"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
                 />
-                Actif
+                <input
+                  value={c.code}
+                  onChange={(e) => updateCurrency(c.id, { code: e.target.value.toLowerCase() })}
+                  placeholder="code (btc)"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-accent sm:w-32"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeCurrency(c.id)}
+                  className="flex items-center justify-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Suppr.
+                </button>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                  Adresse wallet ({c.code ? c.code.toUpperCase() : "…"})
+                </span>
+                <input
+                  value={c.address ?? ""}
+                  onChange={(e) => updateCurrency(c.id, { address: e.target.value })}
+                  placeholder="Colle l'adresse de réception pour cette devise"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+                />
               </label>
-              <input
-                value={c.name}
-                onChange={(e) => updateCurrency(c.id, { name: e.target.value })}
-                placeholder="Nom affiché"
-                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-              <input
-                value={c.code}
-                onChange={(e) => updateCurrency(c.id, { code: e.target.value.toLowerCase() })}
-                placeholder="code (btc)"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-accent sm:w-36"
-              />
-              <button
-                type="button"
-                onClick={() => removeCurrency(c.id)}
-                className="flex items-center justify-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Suppr.
-              </button>
             </li>
           ))}
         </ul>

@@ -10,8 +10,9 @@ import {
   normalizeStatus,
 } from "@/lib/order-status"
 import { listAllOrders, updateOrderStatus, sendAdminMessage, getThreadMessages } from "@/app/actions/order"
+import { confirmDeposit } from "@/app/actions/messaging"
 import { MessageBody } from "@/components/message-body"
-import { Send, RefreshCw } from "lucide-react"
+import { Send, RefreshCw, CheckCircle2, Loader2 } from "lucide-react"
 import { isParcelFulfillment, type ShopId } from "@/lib/shops"
 
 interface Props {
@@ -41,6 +42,7 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [confirmPayLoading, setConfirmPayLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const msgEndRef = useRef<HTMLDivElement>(null)
 
@@ -95,6 +97,37 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
         await loadMsgs(threadId)
       }
     } catch {} finally { setStatusLoading(false) }
+  }
+
+  const handleConfirmVirement = async () => {
+    if (!selected || confirmPayLoading) return
+    setConfirmPayLoading(true)
+    try {
+      await confirmDeposit(selected.id)
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === selected.id
+            ? { ...t, depositConfirmed: true, depositNotified: true, status: "preparation", paymentStatus: "confirmed" }
+            : t,
+        ),
+      )
+      setSelected((s) =>
+        s
+          ? {
+              ...s,
+              depositConfirmed: true,
+              depositNotified: true,
+              status: "preparation",
+              paymentStatus: "confirmed",
+            }
+          : s,
+      )
+      await loadMsgs(selected.id)
+    } catch {
+      /* ignore */
+    } finally {
+      setConfirmPayLoading(false)
+    }
   }
 
   const statusOptions =
@@ -186,6 +219,50 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
             <div ref={msgEndRef} />
           </div>
 
+          {/* Virement crypto signalé par le client */}
+          {selected.depositNotified && !selected.depositConfirmed && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${BORDER}` }}>
+              <p style={{ margin: "0 0 10px", fontSize: 12, color: "rgba(200,190,170,.85)" }}>
+                Le client a signalé un virement
+                {selected.paymentCrypto ? ` en ${String(selected.paymentCrypto).toUpperCase()}` : ""}.
+                Vérifie puis confirme.
+              </p>
+              <button
+                type="button"
+                onClick={handleConfirmVirement}
+                disabled={confirmPayLoading}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: "linear-gradient(135deg,#22c55e,#16a34a)",
+                  color: "#052e16",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  opacity: confirmPayLoading ? 0.7 : 1,
+                }}
+              >
+                {confirmPayLoading ? (
+                  <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} />
+                ) : (
+                  <CheckCircle2 style={{ width: 16, height: 16 }} />
+                )}
+                Virement reçu
+              </button>
+            </div>
+          )}
+          {selected.depositConfirmed && (
+            <div style={{ padding: "10px 16px", borderTop: `1px solid ${BORDER}`, fontSize: 12, color: "#4ade80", fontWeight: 600 }}>
+              ✓ Virement confirmé — commande en préparation
+            </div>
+          )}
+
           {/* Send */}
           <div style={{ padding: "12px 16px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 8 }}>
             <input value={newMsg} onChange={(e) => setNewMsg(e.target.value)}
@@ -241,9 +318,12 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
                   <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: isNew ? "rgba(255,202,40,.15)" : "rgba(255,255,255,.06)", color: isNew ? ACCENT : "rgba(200,190,170,.7)", fontWeight: 600 }}>{st}</span>
                 </div>
                 <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(200,190,170,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.products || t.summary}</p>
-                <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
                   <span style={{ color: ACCENT, fontWeight: 700 }}>{t.total}€</span>
                   <span style={{ color: "rgba(200,190,170,.6)" }}>{t.fulfillment}</span>
+                  {t.depositNotified && !t.depositConfirmed && (
+                    <span style={{ color: "#4ade80", fontWeight: 700 }}>Virement signalé</span>
+                  )}
                   <span style={{ color: "rgba(200,190,170,.5)", marginLeft: "auto" }}>{new Date(t.createdAt).toLocaleDateString("fr-FR")}</span>
                 </div>
               </button>
