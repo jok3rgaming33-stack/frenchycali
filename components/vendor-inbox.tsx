@@ -549,13 +549,28 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
                     border: "none",
                     cursor: "pointer",
                     textAlign: "left",
-                    padding: canDeleteThreads ? "0 0 0 22px" : 0,
+                    padding: canDeleteThreads ? "0 40px 0 22px" : 0,
                     color: "inherit",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: "#f5e8c7" }}>{t.customerName}</span>
-                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: isNew ? "rgba(255,202,40,.15)" : "rgba(255,255,255,.06)", color: isNew ? ACCENT : "rgba(200,190,170,.7)", fontWeight: 600 }}>{st}</span>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: "#f5e8c7", paddingRight: 4 }}>{t.customerName}</span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        background: isNew ? "rgba(255,202,40,.15)" : "rgba(255,255,255,.06)",
+                        color: isNew ? ACCENT : "rgba(200,190,170,.7)",
+                        fontWeight: 600,
+                        flexShrink: 0,
+                        maxWidth: "55%",
+                        textAlign: "center",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {st}
+                    </span>
                   </div>
                   <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(200,190,170,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.products || t.summary}</p>
                   <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap", alignItems: "center" }}>

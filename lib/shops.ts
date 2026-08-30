@@ -18,6 +18,25 @@ export function shopLabel(shop: string | null | undefined): string {
   return shop?.trim() || "Boutique"
 }
 
+/** Parse la liste CSV `shops` (+ fallback colonne `shop`). */
+export function parseAdminShops(
+  shopsCsv: string | null | undefined,
+  primaryShop?: string | null,
+): ShopId[] {
+  const fromCsv = (shopsCsv ?? "")
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(isShopId)
+  const unique = Array.from(new Set(fromCsv))
+  if (unique.length > 0) return unique
+  if (isShopId(primaryShop)) return [primaryShop]
+  return []
+}
+
+export function serializeAdminShops(shops: ShopId[]): string {
+  return Array.from(new Set(shops.filter(isShopId))).join(",")
+}
+
 /** Label boutique pour une commande / un fil (colonne shop, sinon tag [shop] du summary). */
 export function threadShopLabel(thread: {
   shop?: string | null

@@ -44,9 +44,24 @@ export default async function AdminPage({
     )
   }
 
-  if (session.shop !== "all") {
-    redirect(`/admin/${session.shop}`)
+  const accessible: ShopId[] =
+    session.shops === "all"
+      ? [...SHOP_IDS]
+      : Array.isArray(session.shops)
+        ? session.shops
+        : session.shop !== "all"
+          ? [session.shop]
+          : []
+
+  if (accessible.length === 1) {
+    redirect(`/admin/${accessible[0]}`)
   }
+
+  if (accessible.length === 0) {
+    redirect("/admin?needsShop=1")
+  }
+
+  const isSuper = session.shops === "all"
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
@@ -54,11 +69,13 @@ export default async function AdminPage({
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold">Panels indépendants</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Super-admin : choisis le panel à ouvrir. Chaque boutique est gérée séparément.
+            {isSuper
+              ? "Super-admin : choisis le panel à ouvrir. Chaque boutique est gérée séparément."
+              : "Choisis la page à laquelle tu as accès."}
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
-          {SHOP_IDS.map((id) => (
+          {accessible.map((id) => (
             <Link
               key={id}
               href={`/admin/${id}`}

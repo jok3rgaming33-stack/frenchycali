@@ -29,7 +29,17 @@ const ORDER_THREAD_COLUMNS = [
 
 const ADMIN_ACCOUNT_COLUMNS = [
   `ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS shop TEXT`,
+  `ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS shops TEXT`,
 ] as const
+
+/** Remplit shops depuis shop pour les comptes créés avant le multi-pages. */
+const BACKFILL_ADMIN_SHOPS = `
+  UPDATE admin_accounts
+  SET shops = shop
+  WHERE shops IS NULL
+    AND shop IS NOT NULL
+    AND shop <> ''
+`
 
 const THREAD_MESSAGE_COLUMNS = [
   `ALTER TABLE thread_messages ADD COLUMN IF NOT EXISTS client_read_at TIMESTAMPTZ`,
@@ -66,6 +76,11 @@ export async function ensureOrderThreadsColumns(): Promise<void> {
       await pool!.query(BACKFILL_ORDER_SHOP)
     } catch (e) {
       console.error("[ensureOrderThreadsColumns] backfill shop", e)
+    }
+    try {
+      await pool!.query(BACKFILL_ADMIN_SHOPS)
+    } catch (e) {
+      console.error("[ensureOrderThreadsColumns] backfill admin shops", e)
     }
     ready = true
   })()

@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import useSWR from "swr"
 import {
   listAdmins,
   createAdmin,
   setAdminActive,
   setAdminPassword,
-  setAdminShop,
+  setAdminShops,
   regenerateAdminToken,
   deleteAdmin,
   type AdminRow,
@@ -15,16 +15,42 @@ import {
 import { UserPlus, Copy, Check, KeyRound, RefreshCw, Trash2, ShieldOff, ShieldCheck, Loader2, AlertTriangle } from "lucide-react"
 
 import type { ShopId } from "@/lib/shops"
-import { SHOP_LABELS } from "@/lib/shops"
+import { SHOP_IDS, SHOP_LABELS } from "@/lib/shops"
 
 export function AdminAdmins({ shop }: { shop: ShopId }) {
   const { data: admins, mutate, isLoading } = useSWR(`admin-admins-${shop}`, () => listAdmins(shop))
   const [pseudo, setPseudo] = useState("")
   const [usePassword, setUsePassword] = useState(false)
   const [password, setPassword] = useState("")
+  const [createShops, setCreateShops] = useState<ShopId[]>([shop])
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [editingShopsId, setEditingShopsId] = useState<number | null>(null)
+  const [editShops, setEditShops] = useState<ShopId[]>([])
+  const [savingShops, setSavingShops] = useState(false)
+
+  const shopOptions = useMemo(() => SHOP_IDS.map((id) => ({ id, label: SHOP_LABELS[id] })), [])
+
+  const toggleCreateShop = (id: ShopId) => {
+    setCreateShops((prev) => {
+      if (prev.includes(id)) {
+        const next = prev.filter((s) => s !== id)
+        return next.length === 0 ? prev : next // au moins une
+      }
+      return [...prev, id]
+    })
+  }
+
+  const toggleEditShop = (id: ShopId) => {
+    setEditShops((prev) => {
+      if (prev.includes(id)) {
+        const next = prev.filter((s) => s !== id)
+        return next.length === 0 ? prev : next
+      }
+      return [...prev, id]
+    })
+  }
 
   const copy = async (text: string, id: string) => {
     try {
@@ -40,7 +66,11 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
     if (creating) return
     setError(null)
     setCreating(true)
-    const res = await createAdmin({ pseudo, password: usePassword ? password : null, shop })
+    const res = await createAdmin({
+      pseudo,
+      password: usePassword ? password : null,
+      shops: createShops,
+    })
     setCreating(false)
     if (!res.ok) {
       setError(res.error ?? "Erreur.")
@@ -49,6 +79,7 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
     setPseudo("")
     setPassword("")
     setUsePassword(false)
+    setCreateShops([shop])
     mutate()
   }
 
@@ -78,13 +109,23 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
     mutate()
   }
 
-  const handleAssignShop = async (a: AdminRow) => {
-    if (!window.confirm(`Rattacher ${a.pseudo} à ${SHOP_LABELS[shop]} ?`)) return
-    const res = await setAdminShop(a.id, shop)
+  const startEditShops = (a: AdminRow) => {
+    setEditingShopsId(a.id)
+    setEditShops(a.shops.length > 0 ? [...a.shops] : [shop])
+    setError(null)
+  }
+
+  const saveEditShops = async () => {
+    if (editingShopsId == null || editShops.length === 0) return
+    setSavingShops(true)
+    setError(null)
+    const res = await setAdminShops(editingShopsId, editShops)
+    setSavingShops(false)
     if (!res.ok) {
-      setError(res.error ?? "Impossible d'assigner la boutique.")
+      setError(res.error ?? "Impossible d'enregistrer les pages.")
       return
     }
+    setEditingShopsId(null)
     mutate()
   }
 
@@ -97,8 +138,8 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
           Ajouter un administrateur
         </h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Admins de <strong>{SHOP_LABELS[shop]}</strong> uniquement. Un token unique est généré ;
-          tu peux aussi définir un mot de passe.
+          Choisis une ou plusieurs pages auxquelles ce compte aura accès (LaCentral 31, IDF, CaliDelivery).
+          Un token unique est généré ; tu peux aussi définir un mot de passe.
         </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -135,11 +176,37 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
           </div>
         </div>
 
+        <div className="mt-4">
+          <span className="mb-2 block text-sm font-medium">Pages accessibles</span>
+          <div className="flex flex-wrap gap-2">
+            {shopOptions.map((opt) => {
+              const on = createShops.includes(opt.id)
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => toggleCreateShop(opt.id)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    on
+                      ? "border-accent bg-accent/15 text-accent"
+                      : "border-border bg-background text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Sélectionne 1, 2 ou les 3 pages. Au moins une est requise.
+          </p>
+        </div>
+
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
 
         <button
           onClick={handleCreate}
-          disabled={creating || !pseudo.trim()}
+          disabled={creating || !pseudo.trim() || createShops.length === 0}
           className="mt-4 flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {creating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <UserPlus className="h-4 w-4" aria-hidden="true" />}
@@ -166,10 +233,15 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2 font-medium">
                       {a.pseudo}
-                      {a.shopLabel ? (
-                        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
-                          {a.shopLabel}
-                        </span>
+                      {a.shopLabels.length > 0 ? (
+                        a.shopLabels.map((label) => (
+                          <span
+                            key={label}
+                            className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent"
+                          >
+                            {label}
+                          </span>
+                        ))
                       ) : (
                         <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
                           Boutique non assignée
@@ -204,15 +276,56 @@ export function AdminAdmins({ shop }: { shop: ShopId }) {
                     </div>
                   </div>
                 </div>
+
+                {editingShopsId === a.id && (
+                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3">
+                    <p className="mb-2 text-xs font-semibold text-accent">Pages accessibles</p>
+                    <div className="flex flex-wrap gap-2">
+                      {shopOptions.map((opt) => {
+                        const on = editShops.includes(opt.id)
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => toggleEditShop(opt.id)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              on
+                                ? "border-accent bg-accent/15 text-accent"
+                                : "border-border bg-background text-muted-foreground hover:bg-secondary"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={saveEditShops}
+                        disabled={savingShops || editShops.length === 0}
+                        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-50"
+                      >
+                        {savingShops ? "Enregistrement…" : "Enregistrer"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingShopsId(null)}
+                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2">
-                  {!a.shop && (
-                    <button
-                      onClick={() => handleAssignShop(a)}
-                      className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
-                    >
-                      Assigner à {SHOP_LABELS[shop]}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => startEditShops(a)}
+                    className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+                  >
+                    Pages / boutiques
+                  </button>
                   <button
                     onClick={() => toggleActive(a)}
                     className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"

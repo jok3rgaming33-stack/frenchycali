@@ -330,13 +330,15 @@ export type ProductBadge = typeof productBadges.$inferSelect
 export type PushSubscription = typeof pushSubscriptions.$inferSelect
 
 // Comptes admin (gestion à plusieurs). passwordHash optionnel (token recommandé).
-// shop = caliboyz31 | caliboyz94 | calidelivery — null = legacy (à assigner) ; le super-admin env voit tout.
+// shop = boutique principale (redirect login) ; shops = liste CSV des pages accessibles.
+// null = legacy (à assigner) ; le super-admin env voit tout.
 export const adminAccounts = pgTable("admin_accounts", {
   id: serial("id").primaryKey(),
   pseudo: text("pseudo").notNull(),
   token: text("token").notNull().unique(),
   passwordHash: text("password_hash"),
   shop: text("shop"),
+  shops: text("shops"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })

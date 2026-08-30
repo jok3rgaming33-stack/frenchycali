@@ -75,6 +75,7 @@ function buildTabs(shop: ShopId): { id: TabId; label: string; icon: typeof Messa
 export function AdminPanel({
   shop,
   adminPseudo,
+  showShopHub,
   initialActiveOrders,
   initialLockerOrders,
   initialDiscussions,
@@ -88,6 +89,8 @@ export function AdminPanel({
 }: {
   shop: ShopId
   adminPseudo?: string
+  /** Affiche un lien vers /admin pour changer de page (multi-boutiques / super). */
+  showShopHub?: boolean
   initialActiveOrders: OrderThread[]
   initialLockerOrders: OrderThread[]
   initialDiscussions: OrderThread[]
@@ -208,6 +211,14 @@ export function AdminPanel({
               {adminPseudo ? `Connecté : ${adminPseudo}` : "Administrateur"}
               <span className="mx-1.5 text-border">·</span>
               Boutique indépendante
+              {showShopHub && (
+                <>
+                  <span className="mx-1.5 text-border">·</span>
+                  <a href="/admin" className="font-medium text-accent underline-offset-2 hover:underline">
+                    Changer de page
+                  </a>
+                </>
+              )}
               {badges.total > 0 && (
                 <span className="ml-2 inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
                   {badges.total > 9 ? "9+" : badges.total} en attente

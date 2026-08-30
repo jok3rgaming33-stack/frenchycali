@@ -7,7 +7,14 @@ import { revalidatePath } from "next/cache"
 import { getAdminSession, isAdminAuthenticated } from "./admin-auth"
 import { hashPassword } from "@/lib/admin-password"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
-import { isShopId, type ShopId, SHOP_LABELS } from "@/lib/shops"
+import {
+  isShopId,
+  parseAdminShops,
+  serializeAdminShops,
+  type ShopId,
+  SHOP_LABELS,
+  SHOP_IDS,
+} from "@/lib/shops"
 
 export type AdminRow = {
   id: number
@@ -15,16 +22,24 @@ export type AdminRow = {
   token: string
   hasPassword: boolean
   shop: ShopId | null
-  shopLabel: string | null
+  shops: ShopId[]
+  shopLabels: string[]
   active: boolean
   createdAt: string
 }
 
 function genToken() {
-  // Token long et aléatoire (URL-safe).
   const bytes = new Uint8Array(24)
   crypto.getRandomValues(bytes)
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+function normalizeShopsInput(shops: ShopId[]): ShopId[] {
+  return Array.from(new Set(shops.filter(isShopId)))
+}
+
+function adminHasShop(shops: ShopId[], shop: ShopId) {
+  return shops.includes(shop)
 }
 
 export async function listAdmins(forShop?: ShopId): Promise<AdminRow[]> {
@@ -34,37 +49,50 @@ export async function listAdmins(forShop?: ShopId): Promise<AdminRow[]> {
   if (!session) return []
 
   const rows = await db.select().from(adminAccounts).orderBy(adminAccounts.createdAt)
-  const scopeShop = forShop ?? (session.shop !== "all" ? session.shop : undefined)
+  const scopeShop = forShop ?? (session.shop !== "all" && session.shops !== "all" ? (Array.isArray(session.shops) ? session.shops[0] : session.shop) : undefined)
 
   return rows
-    .filter((r) => {
-      if (!scopeShop) return true
-      // Super-admin : inclure aussi les comptes legacy sans boutique (à assigner)
-      if (session.shop === "all") return r.shop === scopeShop || !r.shop
-      return r.shop === scopeShop
+    .map((r) => {
+      const shops = parseAdminShops(r.shops, r.shop)
+      return {
+        id: r.id,
+        pseudo: r.pseudo,
+        token: r.token,
+        hasPassword: Boolean(r.passwordHash),
+        shop: shops[0] ?? (isShopId(r.shop) ? r.shop : null),
+        shops,
+        shopLabels: shops.map((s) => SHOP_LABELS[s]),
+        active: r.active,
+        createdAt: r.createdAt.toISOString(),
+      }
     })
-    .map((r) => ({
-      id: r.id,
-      pseudo: r.pseudo,
-      token: r.token,
-      hasPassword: Boolean(r.passwordHash),
-      shop: isShopId(r.shop) ? r.shop : null,
-      shopLabel: isShopId(r.shop) ? SHOP_LABELS[r.shop] : null,
-      active: r.active,
-      createdAt: r.createdAt.toISOString(),
-    }))
+    .filter((r) => {
+      if (!scopeShop || !isShopId(scopeShop)) return true
+      // Super-admin : afficher aussi les comptes sans boutique (à assigner)
+      if (session.shops === "all" || session.shop === "all") {
+        return r.shops.length === 0 || adminHasShop(r.shops, scopeShop)
+      }
+      return adminHasShop(r.shops, scopeShop)
+    })
 }
 
 export async function createAdmin(input: {
   pseudo: string
   password?: string | null
-  shop: ShopId
+  /** Une ou plusieurs pages accessibles. */
+  shops: ShopId[]
 }) {
   const session = await getAdminSession()
   if (!session || session.needsShopAssignment) return { ok: false as const, error: "unauthorized" }
-  if (!isShopId(input.shop)) return { ok: false as const, error: "Boutique invalide." }
-  if (session.shop !== "all" && session.shop !== input.shop) {
-    return { ok: false as const, error: "Tu ne peux créer des admins que pour ta boutique." }
+
+  const shops = normalizeShopsInput(input.shops)
+  if (shops.length === 0) return { ok: false as const, error: "Choisis au moins une page (boutique)." }
+
+  if (session.shops !== "all" && session.shop !== "all") {
+    const allowed = Array.isArray(session.shops) ? session.shops : isShopId(session.shop) ? [session.shop] : []
+    if (!shops.every((s) => allowed.includes(s))) {
+      return { ok: false as const, error: "Tu ne peux créer des admins que pour tes boutiques." }
+    }
   }
 
   const pseudo = input.pseudo?.trim()
@@ -80,11 +108,12 @@ export async function createAdmin(input: {
     pseudo,
     token,
     passwordHash,
-    shop: input.shop,
+    shop: shops[0],
+    shops: serializeAdminShops(shops),
     active: true,
   })
   revalidatePath("/admin")
-  revalidatePath(`/admin/${input.shop}`)
+  for (const s of shops) revalidatePath(`/admin/${s}`)
   return { ok: true as const, token }
 }
 
@@ -95,18 +124,38 @@ export async function setAdminActive(id: number, active: boolean) {
   return { ok: true as const }
 }
 
-export async function setAdminShop(id: number, shop: ShopId) {
+/** Super-admin (ou gestionnaire) : définit les pages accessibles (1 à 3). */
+export async function setAdminShops(id: number, shopsInput: ShopId[]) {
   const session = await getAdminSession()
-  if (!session || session.shop !== "all") return { ok: false as const, error: "Réservé au super-admin." }
-  if (!isShopId(shop)) return { ok: false as const, error: "Boutique invalide." }
+  if (!session || session.needsShopAssignment) return { ok: false as const, error: "unauthorized" }
+
+  const shops = normalizeShopsInput(shopsInput)
+  if (shops.length === 0) return { ok: false as const, error: "Choisis au moins une boutique." }
+
+  const isSuper = session.shops === "all" || session.shop === "all"
+  if (!isSuper) {
+    if (!(await canManageAdmin(id))) return { ok: false as const, error: "unauthorized" }
+    const allowed = Array.isArray(session.shops) ? session.shops : isShopId(session.shop) ? [session.shop] : []
+    if (!shops.every((s) => allowed.includes(s))) {
+      return { ok: false as const, error: "Tu ne peux assigner que tes boutiques." }
+    }
+  }
+
   await ensureOrderThreadsColumns()
-  await db.update(adminAccounts).set({ shop }).where(eq(adminAccounts.id, id))
+  await db
+    .update(adminAccounts)
+    .set({ shop: shops[0], shops: serializeAdminShops(shops) })
+    .where(eq(adminAccounts.id, id))
   revalidatePath("/admin")
-  revalidatePath(`/admin/${shop}`)
+  for (const s of SHOP_IDS) revalidatePath(`/admin/${s}`)
   return { ok: true as const }
 }
 
-// Définit (ou retire si password vide) un mot de passe choisi pour un admin.
+/** @deprecated Prefer setAdminShops — conserve compat bouton « Assigner à X ». */
+export async function setAdminShop(id: number, shop: ShopId) {
+  return setAdminShops(id, [shop])
+}
+
 export async function setAdminPassword(id: number, password: string | null) {
   if (!(await canManageAdmin(id))) return { ok: false as const, error: "unauthorized" }
   const passwordHash = password?.trim() ? hashPassword(password.trim()) : null
@@ -134,7 +183,12 @@ async function canManageAdmin(id: number): Promise<boolean> {
   const session = await getAdminSession()
   if (!session || session.needsShopAssignment) return false
   await ensureOrderThreadsColumns()
-  if (session.shop === "all") return true
+  if (session.shops === "all" || session.shop === "all") return true
   const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.id, id)).limit(1)
-  return rows[0]?.shop === session.shop
+  const target = rows[0]
+  if (!target) return false
+  const targetShops = parseAdminShops(target.shops, target.shop)
+  const allowed = Array.isArray(session.shops) ? session.shops : isShopId(session.shop) ? [session.shop] : []
+  // Peut gérer si au moins une boutique en commun
+  return targetShops.some((s) => allowed.includes(s)) || targetShops.length === 0
 }

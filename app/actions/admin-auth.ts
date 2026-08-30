@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm"
 import { verifyTurnstile } from "@/lib/turnstile"
 import { verifyPassword } from "@/lib/admin-password"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
-import { isShopId, type ShopId } from "@/lib/shops"
+import { isShopId, parseAdminShops, type ShopId } from "@/lib/shops"
 
 const COOKIE_NAME = "admin_session"
 const ADMIN_PSEUDO = "LaCentral"
@@ -18,8 +18,10 @@ export type AdminShopScope = ShopId | "all"
 export type AdminSession = {
   token: string
   pseudo: string
-  /** Boutique gérée, ou "all" pour le super-admin env. */
+  /** Boutique principale (redirect), ou "all" pour le super-admin env. */
   shop: AdminShopScope
+  /** Pages accessibles : liste, ou "all" (super-admin). */
+  shops: ShopId[] | "all"
   /** true si compte DB sans shop rattaché (bloqué jusqu'à assignation). */
   needsShopAssignment: boolean
 }
@@ -47,12 +49,14 @@ async function setSessionCookie(value: string) {
 }
 
 function sessionFromAdminRow(admin: typeof adminAccounts.$inferSelect): AdminSession {
-  const shop = isShopId(admin.shop) ? admin.shop : null
+  const shops = parseAdminShops(admin.shops, admin.shop)
+  const primary = shops[0] ?? (isShopId(admin.shop) ? admin.shop : null)
   return {
     token: admin.token,
     pseudo: admin.pseudo,
-    shop: shop ?? "all",
-    needsShopAssignment: !shop,
+    shop: primary ?? "all",
+    shops,
+    needsShopAssignment: shops.length === 0,
   }
 }
 
@@ -66,6 +70,7 @@ export async function getAdminSession(): Promise<AdminSession | null> {
       token: session,
       pseudo: ADMIN_PSEUDO,
       shop: "all",
+      shops: "all",
       needsShopAssignment: false,
     }
   }
@@ -80,7 +85,8 @@ export async function getAdminSession(): Promise<AdminSession | null> {
 export async function assertAdminCanAccessShop(shop: ShopId): Promise<AdminSession | null> {
   const session = await getAdminSession()
   if (!session || session.needsShopAssignment) return null
-  if (session.shop === "all") return session
+  if (session.shops === "all" || session.shop === "all") return session
+  if (Array.isArray(session.shops) && session.shops.includes(shop)) return session
   if (session.shop === shop) return session
   return null
 }
@@ -90,12 +96,13 @@ export async function adminLogin(token: string): Promise<{
   ok: boolean
   pseudo?: string
   shop?: AdminShopScope
+  shops?: ShopId[] | "all"
   needsShopAssignment?: boolean
   error?: string
 }> {
   if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) {
     await setSessionCookie(token)
-    return { ok: true, pseudo: ADMIN_PSEUDO, shop: "all", needsShopAssignment: false }
+    return { ok: true, pseudo: ADMIN_PSEUDO, shop: "all", shops: "all", needsShopAssignment: false }
   }
   await ensureOrderThreadsColumns()
   const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.token, token)).limit(1)
@@ -107,6 +114,7 @@ export async function adminLogin(token: string): Promise<{
     ok: true,
     pseudo: s.pseudo,
     shop: s.shop,
+    shops: s.shops,
     needsShopAssignment: s.needsShopAssignment,
   }
 }
@@ -119,6 +127,7 @@ export async function adminLoginWithPassword(
   ok: boolean
   pseudo?: string
   shop?: AdminShopScope
+  shops?: ShopId[] | "all"
   needsShopAssignment?: boolean
   error?: string
 }> {
@@ -137,6 +146,7 @@ export async function adminLoginWithPassword(
     ok: true,
     pseudo: s.pseudo,
     shop: s.shop,
+    shops: s.shops,
     needsShopAssignment: s.needsShopAssignment,
   }
 }
@@ -181,10 +191,21 @@ export async function startAdminClientPreview(): Promise<
 
 function redirectAfterLogin(res: {
   shop?: AdminShopScope
+  shops?: ShopId[] | "all"
   needsShopAssignment?: boolean
 }) {
   if (res.needsShopAssignment) {
     redirect("/admin?needsShop=1")
+  }
+  // Plusieurs pages → hub /admin pour choisir ; une seule → direct
+  if (res.shops === "all") {
+    redirect("/admin")
+  }
+  if (Array.isArray(res.shops) && res.shops.length > 1) {
+    redirect("/admin")
+  }
+  if (Array.isArray(res.shops) && res.shops.length === 1) {
+    redirect(`/admin/${res.shops[0]}`)
   }
   if (res.shop && res.shop !== "all") {
     redirect(`/admin/${res.shop}`)

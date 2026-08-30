@@ -36,6 +36,9 @@ export default async function AdminShopPage({
 
   const allowed = await assertAdminCanAccessShop(shop)
   if (!allowed) {
+    if (Array.isArray(session.shops) && session.shops.length > 0) {
+      redirect(`/admin/${session.shops[0]}`)
+    }
     if (session.shop !== "all" && session.shop !== shop) {
       redirect(`/admin/${session.shop}`)
     }
@@ -96,10 +99,15 @@ export default async function AdminShopPage({
     /* DB vide / non migrée — panel charge à vide */
   }
 
+  const showShopHub =
+    session.shops === "all" ||
+    (Array.isArray(session.shops) && session.shops.length > 1)
+
   return (
     <AdminPanel
       shop={shop}
       adminPseudo={session.pseudo}
+      showShopHub={showShopHub}
       initialActiveOrders={data.activeOrders}
       initialLockerOrders={data.lockerOrders}
       initialDiscussions={data.discussions}
