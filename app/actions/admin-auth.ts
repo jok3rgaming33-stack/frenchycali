@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm"
 import { verifyTurnstile } from "@/lib/turnstile"
 import { verifyPassword } from "@/lib/admin-password"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
-import { isShopId, type ShopId, SHOP_LABELS } from "@/lib/shops"
+import { isShopId, type ShopId } from "@/lib/shops"
 
 const COOKIE_NAME = "admin_session"
 const ADMIN_PSEUDO = "Heisenberg"
@@ -207,5 +207,3 @@ export async function adminGateAction(_prevState: { error?: string } | null, for
   if (!res.ok) return { error: res.error ?? "Identifiants invalides." }
   redirectAfterLogin(res)
 }
-
-export { SHOP_LABELS }
