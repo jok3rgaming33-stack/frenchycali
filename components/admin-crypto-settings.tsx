@@ -1,40 +1,28 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, Save, Wallet, ExternalLink, CheckCircle2, AlertTriangle, Plus, Trash2 } from "lucide-react"
+import { Loader2, Save, Wallet, Plus, Trash2 } from "lucide-react"
 import {
-  getCryptoGatewayStatus,
-  setCryptoGatewayEnabled,
   getCryptoCurrencies,
   setCryptoCurrencies,
-  type CryptoGatewayPublicStatus,
   type CryptoCurrencyOption,
 } from "@/app/actions/crypto-payment"
 
 /**
- * Réglages gateway multi-crypto (NOWPayments) + liste des cryptos proposées au checkout.
- * Pas de ChangeNOW — uniquement NOWPayments.
+ * Devises proposées au checkout CaliDelivery.
+ * Le client choisit sa crypto et paie depuis son propre portefeuille
+ * (pas de gateway / NOWPayments / ChangeNOW).
  */
 export function AdminCryptoSettings() {
-  const [status, setStatus] = useState<CryptoGatewayPublicStatus | null>(null)
-  const [enabled, setEnabled] = useState(true)
   const [currencies, setCurrencies] = useState<CryptoCurrencyOption[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([getCryptoGatewayStatus(), getCryptoCurrencies()])
-      .then(([s, list]) => {
-        setStatus(s)
-        if (s.configured && !s.enabled) setEnabled(false)
-        if (s.configured && s.enabled) setEnabled(true)
-        setCurrencies(list)
-      })
-      .catch(() => {
-        setStatus(null)
-        setCurrencies([])
-      })
+    getCryptoCurrencies()
+      .then(setCurrencies)
+      .catch(() => setCurrencies([]))
       .finally(() => setLoading(false))
   }, [])
 
@@ -52,7 +40,7 @@ export function AdminCryptoSettings() {
     const id = `c_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`
     setCurrencies((prev) => [
       ...(prev ?? []),
-      { id, code: "", name: "Nouvelle crypto", enabled: true },
+      { id, code: "", name: "Nouvelle devise", enabled: true },
     ])
   }
 
@@ -60,12 +48,6 @@ export function AdminCryptoSettings() {
     if (!currencies) return
     setSaving(true)
     setMsg(null)
-    const gate = await setCryptoGatewayEnabled(enabled)
-    if (!gate.ok) {
-      setSaving(false)
-      setMsg(gate.error ?? "Erreur gateway")
-      return
-    }
     const cleaned = currencies.map((c) => ({
       ...c,
       code: c.code.trim().toLowerCase(),
@@ -75,11 +57,9 @@ export function AdminCryptoSettings() {
     const cur = await setCryptoCurrencies(cleaned)
     setSaving(false)
     if (!cur.ok) {
-      setMsg(cur.error ?? "Erreur cryptos")
+      setMsg(cur.error ?? "Erreur")
       return
     }
-    const s = await getCryptoGatewayStatus()
-    setStatus(s)
     setCurrencies(await getCryptoCurrencies())
     setMsg("Enregistré.")
   }
@@ -100,76 +80,22 @@ export function AdminCryptoSettings() {
             <Wallet className="h-5 w-5" />
           </span>
           <div>
-            <h3 className="text-lg font-bold">Paiements multi-crypto</h3>
+            <h3 className="text-lg font-bold">Devises de paiement</h3>
             <p className="text-sm text-muted-foreground">
-              Gateway <strong>NOWPayments</strong> uniquement (pas de ChangeNOW). Le client choisit sa
-              crypto dans le panier avant de valider.
+              Cryptos proposées au client sur CaliDelivery. Le client choisit sa devise au panier et
+              règle depuis <strong>son propre portefeuille</strong> — tu lui envoies les instructions
+              (adresse / montant) en messagerie.
             </p>
           </div>
         </div>
 
-        <div
-          className={`mb-4 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
-            status?.enabled
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-200"
-          }`}
-        >
-          {status?.enabled ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
-          <span>{status?.message ?? "Statut inconnu."}</span>
-        </div>
-
-        <div className="mb-4 space-y-2 rounded-xl border border-border bg-background/50 p-3 text-xs text-muted-foreground">
-          <p className="font-semibold text-foreground">Variables d&apos;environnement Vercel</p>
-          <ul className="list-inside list-disc space-y-1 font-mono">
-            <li>NOWPAYMENTS_API_KEY</li>
-            <li>NOWPAYMENTS_IPN_SECRET</li>
-            <li>NEXT_PUBLIC_SITE_URL</li>
-          </ul>
-          <p>
-            IPN : <code className="rounded bg-black/30 px-1">/api/crypto/ipn</code>
-          </p>
-          <a
-            href="https://nowpayments.io/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-accent hover:underline"
-          >
-            Ouvrir NOWPayments <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-
-        <label className="mb-2 flex cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-3">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            disabled={!status?.configured}
-            className="h-4 w-4 accent-[var(--color-accent,#ffca28)]"
-          />
-          <span className="text-sm">
-            <span className="font-semibold">Activer le paiement crypto au checkout</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              Si désactivé, le client ne pourra pas régler en crypto.
-            </span>
-          </span>
-        </label>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-bold">Cryptos proposées</h3>
-            <p className="text-xs text-muted-foreground">
-              Comme pour les colis : active / désactive, ajoute ou supprime. Code = ticker NOWPayments
-              (ex. <code className="rounded bg-black/30 px-1">btc</code>,{" "}
-              <code className="rounded bg-black/30 px-1">usdttrc20</code>).
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Active / désactive, ajoute ou supprime. Code court (ex.{" "}
+            <code className="rounded bg-black/30 px-1">btc</code>,{" "}
+            <code className="rounded bg-black/30 px-1">xmr</code>,{" "}
+            <code className="rounded bg-black/30 px-1">usdt</code>).
+          </p>
           <button
             type="button"
             onClick={addCurrency}
@@ -225,7 +151,7 @@ export function AdminCryptoSettings() {
       <button
         type="button"
         onClick={save}
-        disabled={saving || !status?.configured}
+        disabled={saving}
         className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

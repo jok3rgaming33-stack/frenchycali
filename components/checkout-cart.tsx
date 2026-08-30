@@ -21,7 +21,6 @@ import {
   type ParcelService,
 } from "@/app/actions/settings"
 import {
-  getCryptoGatewayStatus,
   getEnabledCryptoCurrencies,
   type CryptoCurrencyOption,
 } from "@/app/actions/crypto-payment"
@@ -176,9 +175,9 @@ export function CheckoutCart({
   const isParcel = isDeliveryShop && !!selectedParcel
 
   const [cryptoList, setCryptoList] = useState<CryptoCurrencyOption[]>([])
-  const [cryptoGatewayOn, setCryptoGatewayOn] = useState(false)
   const [payCurrency, setPayCurrency] = useState("")
-  const needsCrypto = cryptoOk && cryptoGatewayOn
+  /** CaliDelivery : le client choisit toujours sa devise (portefeuille autonome). */
+  const needsCrypto = cryptoOk
 
   const [address, setAddress] = useState("")
   const [parcelAddress, setParcelAddress] = useState("")
@@ -190,15 +189,7 @@ export function CheckoutCart({
   const [done, setDone] = useState<{
     trackingToken: string
     threadId: number
-    cryptoPayment?: {
-      enabled: boolean
-      invoiceUrl?: string
-      paymentStatus?: string
-      payCurrency?: string
-      payAddress?: string | null
-      payAmount?: string | null
-      error?: string
-    }
+    payCurrency?: string
   } | null>(null)
   const [error, setError] = useState("")
 
@@ -229,19 +220,15 @@ export function CheckoutCart({
 
   useEffect(() => {
     if (!cryptoOk) return
-    Promise.all([getCryptoGatewayStatus(), getEnabledCryptoCurrencies()])
-      .then(([st, list]) => {
-        setCryptoGatewayOn(!!st.enabled)
+    getEnabledCryptoCurrencies()
+      .then((list) => {
         setCryptoList(list)
         setPayCurrency((prev) => {
           if (prev && list.some((c) => c.code === prev)) return prev
           return list[0]?.code ?? ""
         })
       })
-      .catch(() => {
-        setCryptoGatewayOn(false)
-        setCryptoList([])
-      })
+      .catch(() => setCryptoList([]))
   }, [cryptoOk])
 
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0)
@@ -401,7 +388,7 @@ export function CheckoutCart({
       setDone({
         trackingToken: res.trackingToken!,
         threadId: res.threadId!,
-        cryptoPayment: cryptoOk ? res.cryptoPayment : undefined,
+        payCurrency: needsCrypto ? payCurrency : undefined,
       })
     } catch {
       setError("Erreur réseau. Vérifie ta connexion et réessaie.")
@@ -411,7 +398,6 @@ export function CheckoutCart({
   }
 
   if (done) {
-    const payUrl = cryptoOk && done.cryptoPayment?.enabled ? done.cryptoPayment.invoiceUrl : null
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px", textAlign: "center" }}>
         <div style={{ borderRadius: 24, border: `1px solid ${cardBorder}`, background: "rgba(20,18,12,.92)", padding: "40px 24px" }}>
@@ -428,51 +414,16 @@ export function CheckoutCart({
             Suivi : {done.trackingToken}
           </p>
 
-          {done.cryptoPayment?.enabled && (
+          {done.payCurrency && (
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}12`, textAlign: "left" }}>
               <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: accentColor, fontFamily: "Orbitron,sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                Paiement {done.cryptoPayment.payCurrency?.toUpperCase() || "CRYPTO"}
+                Devise choisie : {done.payCurrency.toUpperCase()}
               </p>
-              {done.cryptoPayment.payAmount && (
-                <p style={{ margin: "0 0 8px", fontSize: 12, color: textMuted }}>
-                  Montant : <strong style={{ color: textMain }}>{done.cryptoPayment.payAmount} {done.cryptoPayment.payCurrency?.toUpperCase()}</strong>
-                </p>
-              )}
-              {done.cryptoPayment.payAddress && (
-                <p style={{ margin: "0 0 12px", fontSize: 11, color: textMuted, wordBreak: "break-all" }}>
-                  Adresse : {done.cryptoPayment.payAddress}
-                </p>
-              )}
-              {payUrl && (
-                <a
-                  href={payUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    boxSizing: "border-box",
-                    textAlign: "center",
-                    padding: "14px 16px",
-                    borderRadius: 999,
-                    background: `linear-gradient(120deg,${accentColor},${primaryColor})`,
-                    color: isDeliveryShop ? "#000814" : "#0f0d07",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    textDecoration: "none",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Ouvrir le paiement
-                </a>
-              )}
+              <p style={{ margin: 0, fontSize: 12, color: textMuted, lineHeight: 1.5 }}>
+                Le vendeur te communiquera les instructions de paiement (adresse / montant) dans la messagerie.
+                Tu règles depuis ton propre portefeuille.
+              </p>
             </div>
-          )}
-          {done.cryptoPayment?.error && (
-            <p style={{ margin: "0 0 16px", fontSize: 12, color: "#f87171" }}>
-              Paiement crypto : {done.cryptoPayment.error}
-            </p>
           )}
 
           <button
@@ -733,15 +684,19 @@ export function CheckoutCart({
         </div>
       )}
 
-      {/* Choix crypto obligatoire (CaliDelivery + gateway actif) */}
+      {/* Choix devise obligatoire (CaliDelivery) — portefeuille autonome, pas de gateway */}
       {needsCrypto && (
-        <div style={{ marginBottom: 16 }}>
-          <p style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted }}>
-            Crypto de paiement
+        <div style={{ marginBottom: 16, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}10` }}>
+          <p style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: accentColor, fontWeight: 800 }}>
+            Devise de paiement
+          </p>
+          <p style={{ margin: "0 0 12px", fontSize: 12, color: textMuted, lineHeight: 1.45 }}>
+            Choisis la crypto avec laquelle tu souhaites régler. Tu paieras depuis ton propre portefeuille ;
+            le vendeur t&apos;enverra les instructions dans la messagerie.
           </p>
           {cryptoList.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#f87171" }}>
-              Aucune crypto activée. Contacte le vendeur ou réessaie plus tard.
+            <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>
+              Aucune devise activée pour le moment. Réessaie plus tard.
             </p>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
@@ -758,9 +713,6 @@ export function CheckoutCart({
               ))}
             </div>
           )}
-          <p style={{ margin: "8px 0 0", fontSize: 11, color: textMuted }}>
-            Paiement via NOWPayments — tu recevras l&apos;adresse / le lien après validation.
-          </p>
         </div>
       )}
 

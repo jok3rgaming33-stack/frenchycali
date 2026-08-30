@@ -57,7 +57,7 @@ function buildTabs(shop: ShopId): { id: TabId; label: string; icon: typeof Messa
     { id: "logistique", label: "Logistique", icon: Truck },
   )
   if (delivery) {
-    tabs.push({ id: "crypto", label: "Paiements crypto", icon: Wallet })
+    tabs.push({ id: "crypto", label: "Devises", icon: Wallet })
   }
   tabs.push(
     { id: "commandes", label: "Récap commandes", icon: ListOrdered },

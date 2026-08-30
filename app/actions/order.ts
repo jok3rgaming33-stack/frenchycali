@@ -11,7 +11,7 @@ import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { statusMeta, statusThreadMessage } from "@/lib/order-status"
 import { ensureRatingsSchema } from "@/app/actions/ratings"
 import { buildRatingInviteMessage } from "@/lib/order-items"
-import { createCryptoInvoiceForOrder, getCryptoGatewayStatus } from "@/app/actions/crypto-payment"
+import { getEnabledCryptoCurrencies } from "@/app/actions/crypto-payment"
 import { getEnabledParcelServices, getParcelServices } from "@/app/actions/settings"
 import {
   LOCAL_FULFILLMENTS,
@@ -328,53 +328,51 @@ async function placeOrderInner(input: PlaceOrderInput) {
     /* push optionnel */
   }
 
-  // Paiement multi-crypto (NOWPayments) — CaliDelivery uniquement + gateway actif
-  let cryptoPayment: {
-    enabled: boolean
-    invoiceUrl?: string
-    paymentStatus?: string
-    payCurrency?: string
-    payAddress?: string | null
-    payAmount?: string | null
-    error?: string
-  } = { enabled: false }
-
+  // CaliDelivery : devise choisie par le client (portefeuille autonome — pas de gateway)
+  let selectedPayCurrency: string | undefined
   if (allowsCryptoCheckout(shop)) {
-    const gateway = await getCryptoGatewayStatus()
-    if (gateway.enabled) {
-      const payCurrency = input.payCurrency?.trim().toLowerCase()
-      if (!payCurrency) {
-        return { ok: false as const, error: "Choisis une crypto pour régler ta commande." }
-      }
-      try {
-        const inv = await createCryptoInvoiceForOrder({
-          threadId: thread.id,
-          totalEur: total,
-          customerToken,
-          customerName: customerName || "Client",
-          shop,
-          payCurrency,
-        })
-        if (inv.ok) {
-          cryptoPayment = {
-            enabled: true,
-            invoiceUrl: inv.invoiceUrl,
-            paymentStatus: inv.paymentStatus,
-            payCurrency: inv.payCurrency,
-            payAddress: inv.payAddress,
-            payAmount: inv.payAmount,
-          }
-        } else if (!inv.skipped) {
-          cryptoPayment = { enabled: false, error: inv.error }
-          console.error("[placeOrder] crypto invoice skipped:", inv.error)
-        }
-      } catch (e) {
-        console.error("[placeOrder] crypto invoice error:", e)
-      }
+    const payCurrency = input.payCurrency?.trim().toLowerCase()
+    if (!payCurrency) {
+      return { ok: false as const, error: "Choisis une devise pour régler ta commande." }
+    }
+    const enabled = await getEnabledCryptoCurrencies()
+    const allowed = enabled.some((c) => c.code === payCurrency)
+    if (!allowed) {
+      return { ok: false as const, error: "Cette devise n'est pas disponible." }
+    }
+    selectedPayCurrency = payCurrency
+    try {
+      await db.execute(sql`
+        UPDATE order_threads SET
+          payment_crypto = ${payCurrency},
+          payment_status = 'awaiting',
+          payment_amount_eur = ${Math.round(total)},
+          updated_at = NOW()
+        WHERE id = ${thread.id}
+      `)
+    } catch (e) {
+      console.error("[placeOrder] persist pay currency:", e)
+    }
+    try {
+      await db.insert(threadMessages).values({
+        threadId: thread.id,
+        sender: "vendeur",
+        body: [
+          `💳 Devise de paiement choisie : ${payCurrency.toUpperCase()}`,
+          ``,
+          `Total commande : ${total}€`,
+          ``,
+          `Le vendeur va te communiquer les instructions de paiement (adresse / montant) ici.`,
+          `Règle uniquement depuis ton propre portefeuille, dans la devise indiquée.`,
+        ].join("\n"),
+      })
+    } catch (e) {
+      console.error("[placeOrder] crypto choice message:", e)
     }
   }
 
   revalidatePath("/admin")
+  revalidatePath(`/admin/${shop}`)
   revalidatePath("/messagerie")
   return {
     ok: true as const,
@@ -383,7 +381,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     total,
     deliveryFee,
     discount,
-    cryptoPayment,
+    payCurrency: selectedPayCurrency,
   }
 }
 
