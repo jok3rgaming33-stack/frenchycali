@@ -5,24 +5,24 @@ import { Loader2, Save, Check, Truck } from "lucide-react"
 import { getLogisticsContent, setLogisticsContent, type LogisticsContent } from "@/app/actions/settings"
 
 // Éditeur du contenu de la modale « Livraison & Meet-up » côté client.
-export function AdminLogistics() {
+export function AdminLogistics({ shop }: { shop?: string }) {
   const [form, setForm] = useState<LogisticsContent | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getLogisticsContent()
+    getLogisticsContent(shop)
       .then(setForm)
       .catch(() => setError("Impossible de charger le contenu."))
-  }, [])
+  }, [shop])
 
   const save = async () => {
     if (!form) return
     setSaving(true)
     setSaved(false)
     setError(null)
-    const res = await setLogisticsContent(form)
+    const res = await setLogisticsContent(form, shop)
     setSaving(false)
     if (!res.ok) {
       setError(res.error ?? "Erreur lors de l'enregistrement.")

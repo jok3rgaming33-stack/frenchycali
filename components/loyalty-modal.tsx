@@ -80,12 +80,12 @@ export function LoyaltyModal({ isOpen, onClose, userData }: LoyaltyModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/90 p-4"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-background/90"
       role="dialog"
       aria-modal="true"
       aria-label="Espace fidélité"
     >
-      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-3xl border border-accent/40 bg-card p-6">
+      <div className="modal-shell w-full max-w-md rounded-3xl border border-accent/40 bg-card p-6 overflow-y-auto">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-2xl font-bold text-balance">Espace fidélité</h2>
           <button

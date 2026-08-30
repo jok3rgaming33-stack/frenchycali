@@ -2,13 +2,21 @@
 
 import { db } from "@/lib/db"
 import { orderThreads, threadMessages, products } from "@/lib/db/schema"
-import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm"
+import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql, type SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { normalizeStatus, statusMeta } from "@/lib/order-status"
 import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { notifyCustomer, notifyVendor } from "@/lib/push"
 import { adjustStock } from "@/app/actions/products"
 import { buildRatingInviteMessage } from "@/lib/order-items"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
+import { isParcelFulfillment, isShopId, type ShopId } from "@/lib/shops"
+
+/** Filtre SQL boutique — ignore les threads sans shop (legacy) sauf pour super-admin (shop undefined). */
+function shopEq(shop?: ShopId | null): SQL | undefined {
+  if (!shop) return undefined
+  return eq(orderThreads.shop, shop)
+}
 
 export type NewOrderInput = {
   customerName: string
@@ -19,12 +27,13 @@ export type NewOrderInput = {
   // Montant de la remise appliquée (promo ou fidélité). Stocké pour calculer
   // les points sur le total net et informer le client dans le message de livraison.
   promoDiscount?: number
-  fulfillment: "livraison" | "meetup" | "locker"
+  fulfillment: string
   address?: string
   lat?: number | null
   lng?: number | null
   scheduledDate?: string
   scheduledSlot?: string
+  shop?: ShopId
 }
 
 // Crée un fil de commande + génère le token de suivi + envoie le message initial au client
@@ -33,6 +42,7 @@ export async function createOrderThread(input: NewOrderInput) {
   // Génère un token de suivi unique : "TRK_" + 16 caractères aléatoires
   const trackingToken = `TRK_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
   
+  await ensureOrderThreadsColumns()
   const [thread] = await db
     .insert(orderThreads)
     .values({
@@ -42,6 +52,7 @@ export async function createOrderThread(input: NewOrderInput) {
       summary: input.summary,
       products: input.products?.trim() || null,
       total: input.total,
+      shop: input.shop && isShopId(input.shop) ? input.shop : null,
       fulfillment: input.fulfillment,
       address: input.address?.trim() || null,
       lat: input.lat ?? null,
@@ -59,13 +70,12 @@ export async function createOrderThread(input: NewOrderInput) {
     body: input.summary,
   })
 
-  if (input.fulfillment === "locker") {
-    // Pour les commandes locker : on crée un fil séparé dans la messagerie normale
-    // contenant UNIQUEMENT le token TRK — visible une seule fois puis supprimé.
+  if (isParcelFulfillment(input.fulfillment)) {
+    // Colis (CaliDelivery / legacy locker) : fil one-shot avec le token TRK
     const trkBody = [
       `⚠️ ATTENTION — LIS CE MESSAGE ATTENTIVEMENT ⚠️`,
       ``,
-      `Ton token de suivi Locker est :`,
+      `Ton token de suivi colis est :`,
       ``,
       `${trackingToken}`,
       ``,
@@ -82,7 +92,8 @@ export async function createOrderThread(input: NewOrderInput) {
         trackingToken: `TRK_MSG_${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`,
         summary: `Token de suivi — Commande #${thread.id}`,
         total: 0,
-        fulfillment: "locker",
+        shop: input.shop && isShopId(input.shop) ? input.shop : null,
+        fulfillment: input.fulfillment,
         status: "trk_token", // statut spécial : message TRK à lire une fois
       })
       .returning()
@@ -93,15 +104,13 @@ export async function createOrderThread(input: NewOrderInput) {
       body: trkBody,
     })
 
-    // Notifie le client : il doit ouvrir la messagerie pour sauvegarder son token
     await notifyCustomer(input.customerToken?.trim() || null, {
-      title: "Token de suivi Locker — A SAUVEGARDER",
+      title: "Token de suivi colis — À SAUVEGARDER",
       body: "Ouvre la messagerie maintenant pour récupérer ton token de suivi. Il sera supprimé après lecture.",
       url: "/",
       tag: `trk-${thread.id}`,
     })
   } else {
-    // Commandes non-locker : message de confirmation classique dans le fil de commande
     await db.insert(threadMessages).values({
       threadId: thread.id,
       sender: "vendeur",
@@ -109,10 +118,9 @@ export async function createOrderThread(input: NewOrderInput) {
     })
   }
 
-  // Notifie le vendeur de l'arrivée d'une nouvelle commande.
   await notifyVendor({
     title: "Nouvelle commande",
-    body: `${name} vient de passer une commande (#${thread.id})${input.fulfillment === "locker" ? " — LOCKER" : ""}.`,
+    body: `${name} vient de passer une commande (#${thread.id})${isParcelFulfillment(input.fulfillment) ? " — COLIS" : ""}.`,
     url: "/admin",
     tag: `order-${thread.id}`,
   })
@@ -163,7 +171,8 @@ export async function createGeneralInquiryThread(input: {
 // - exclut les notifications broadcast
 // - exclut les discussions directes (status discussion/pris_en_charge/ouvert/ferme)
 // - exclut les fils sans article (total = 0 ou null) → ils vont dans Messagerie
-export async function getThreads() {
+export async function getThreads(shop?: ShopId) {
+  await ensureOrderThreadsColumns()
   const threads = await db
     .select()
     .from(orderThreads)
@@ -172,6 +181,7 @@ export async function getThreads() {
         ne(orderThreads.status, "notification"),
         notInArray(orderThreads.status, ["discussion", "pris_en_charge", "ouvert", "ferme"]),
         gt(orderThreads.total, 0),
+        shopEq(shop),
       )
     )
     .orderBy(desc(orderThreads.updatedAt))
@@ -181,38 +191,51 @@ export async function getThreads() {
 // Statuts réservés à la Messagerie — exclus de toutes les vues Commandes
 const DISCUSSION_STATUSES = ["discussion", "pris_en_charge", "ouvert", "ferme"] as const
 
-// Commandes actives hors locker : tout sauf "livree", "annulee", discussions et fulfillment locker
-export async function getActiveOrders() {
+/** Commandes locales actives (meetup / livraison main) — hors colis. */
+export async function getActiveOrders(shop?: ShopId) {
+  await ensureOrderThreadsColumns()
   const threads = await db
     .select()
     .from(orderThreads)
     .where(
       and(
         notInArray(orderThreads.status, ["livree", "annulee", "notification", ...DISCUSSION_STATUSES]),
-        ne(orderThreads.fulfillment, "locker"),
+        inArray(orderThreads.fulfillment, ["meetup", "livraison"]),
+        shopEq(shop),
       )
     )
     .orderBy(desc(orderThreads.updatedAt))
   return threads
 }
 
-// Commandes Locker Mondial Relay actives (non livrees, non annulees, hors fils TRK et discussions)
-export async function getLockerOrders() {
+/**
+ * Commandes colis actives (CaliDelivery + legacy locker).
+ * Alias historique : getLockerOrders.
+ */
+export async function getParcelOrders(shop?: ShopId) {
+  await ensureOrderThreadsColumns()
   const threads = await db
     .select()
     .from(orderThreads)
     .where(
       and(
-        eq(orderThreads.fulfillment, "locker"),
         notInArray(orderThreads.status, ["livree", "annulee", "trk_token", ...DISCUSSION_STATUSES]),
+        notInArray(orderThreads.fulfillment, ["meetup", "livraison"]),
+        shopEq(shop),
       )
     )
     .orderBy(desc(orderThreads.updatedAt))
   return threads
 }
 
+/** @deprecated Préférer getParcelOrders */
+export async function getLockerOrders(shop?: ShopId) {
+  return getParcelOrders(shop)
+}
+
 // Commandes clôturées (livree ou annulee), toutes livraisons confondues, sans discussions
-export async function getPastOrders() {
+export async function getPastOrders(shop?: ShopId) {
+  await ensureOrderThreadsColumns()
   return db
     .select()
     .from(orderThreads)
@@ -223,17 +246,24 @@ export async function getPastOrders() {
           eq(orderThreads.status, "annulee"),
         ),
         notInArray(orderThreads.status, ["trk_token", ...DISCUSSION_STATUSES]),
+        shopEq(shop),
       )
     )
     .orderBy(desc(orderThreads.updatedAt))
 }
 
 // Discussions directes — tous les statuts discussion (discussion, pris_en_charge, ouvert, ferme)
-export async function getDiscussions() {
+export async function getDiscussions(shop?: ShopId) {
+  await ensureOrderThreadsColumns()
   const threads = await db
     .select()
     .from(orderThreads)
-    .where(inArray(orderThreads.status, ["discussion", "pris_en_charge", "ouvert", "ferme"]))
+    .where(
+      and(
+        inArray(orderThreads.status, ["discussion", "pris_en_charge", "ouvert", "ferme"]),
+        shopEq(shop),
+      ),
+    )
     .orderBy(desc(orderThreads.updatedAt))
   return threads
 }
@@ -557,7 +587,7 @@ export async function getUnreadCounts(
  * - verifications : KYC en attente
  * - recovery : dossiers récupération ouverts
  */
-export async function getAdminBadgeCounts(): Promise<{
+export async function getAdminBadgeCounts(shop?: ShopId): Promise<{
   orders: number
   locker: number
   messaging: number
@@ -573,6 +603,7 @@ export async function getAdminBadgeCounts(): Promise<{
     return empty
   }
 
+  await ensureOrderThreadsColumns()
   const DISCUSSION = new Set(["discussion", "pris_en_charge", "ouvert", "ferme"])
 
   const threads = await db
@@ -589,7 +620,12 @@ export async function getAdminBadgeCounts(): Promise<{
       )`,
     })
     .from(orderThreads)
-    .where(notInArray(orderThreads.status, ["notification", "livree", "annulee", "trk_token"]))
+    .where(
+      and(
+        notInArray(orderThreads.status, ["notification", "livree", "annulee", "trk_token"]),
+        shopEq(shop),
+      ),
+    )
 
   let orders = 0
   let locker = 0
@@ -605,7 +641,7 @@ export async function getAdminBadgeCounts(): Promise<{
       continue
     }
 
-    if (t.fulfillment === "locker") {
+    if (isParcelFulfillment(t.fulfillment)) {
       if (isNew || waitingClient) locker++
     } else {
       if (isNew || waitingClient) orders++
@@ -954,23 +990,45 @@ export type AdminOrderInput = {
   customerToken: string | null
   // Articles
   items: AdminOrderItem[]
-  // Mode de livraison
-  fulfillment: "livraison" | "meetup" | "locker"
-  // Livraison domicile
+  // Mode : meetup | livraison (local) ou id service colis (CaliDelivery)
+  fulfillment: string
+  // Livraison domicile / colis
   address?: string
   deliveryFee?: number
   // Meetup
   meetupDate?: string    // "2026-07-19"
   meetupSlot?: string    // "Dimanche 22h"
-  // Locker
+  /** Adresse point relais / colis (alias address pour colis) */
   lockerAddress?: string
+  /** Boutique cible — défaut caliboyz31 */
+  shop?: ShopId
 }
 
 export async function adminCreateOrder(input: AdminOrderInput) {
   if (!input.items.length) return { ok: false as const, error: "Aucun article." }
 
+  const shop: ShopId = input.shop && isShopId(input.shop) ? input.shop : "caliboyz31"
+  const fulfillment = (input.fulfillment ?? "").trim()
+  if (!fulfillment) return { ok: false as const, error: "Mode de récupération manquant." }
+
+  const { getEnabledParcelServices } = await import("@/app/actions/settings")
+  const parcelServices = await getEnabledParcelServices()
+  const parcelSvc = parcelServices.find((s) => s.id === fulfillment)
+  const isParcel = isParcelFulfillment(fulfillment) && fulfillment !== "livraison"
+
+  if (shop === "calidelivery") {
+    if (!parcelSvc) return { ok: false as const, error: "Service colis invalide ou désactivé." }
+  } else if (fulfillment !== "meetup" && fulfillment !== "livraison") {
+    return { ok: false as const, error: "Mode invalide pour cette boutique." }
+  }
+
   const subtotal = input.items.reduce((s, i) => s + i.qty * i.price, 0)
-  const fee = input.fulfillment === "livraison" ? (input.deliveryFee ?? 0) : input.fulfillment === "locker" ? 10 : 0
+  const fee =
+    fulfillment === "meetup"
+      ? 0
+      : parcelSvc
+        ? (input.deliveryFee ?? parcelSvc.costEur ?? 0)
+        : (input.deliveryFee ?? 0)
   const total = subtotal + fee
 
   const lines = input.items.map((i) => `• ${i.qty}x ${i.title} — ${i.qty * i.price}€`).join("\n")
@@ -981,21 +1039,24 @@ export async function adminCreateOrder(input: AdminOrderInput) {
   let scheduledSlot: string | null = null
   let address: string | null = null
 
-  if (input.fulfillment === "meetup") {
+  if (fulfillment === "meetup") {
     scheduledDate = input.meetupDate ?? null
     scheduledSlot = input.meetupSlot ?? null
     modeLine = `Retrait sur place (meet-up)${scheduledSlot ? ` à ${scheduledSlot}` : ""}`
-  } else if (input.fulfillment === "locker") {
-    address = input.lockerAddress ?? null
-    modeLine = `Retrait en Locker Mondial Relay${address ? ` — ${address}` : ""} (frais 10€)`
+  } else if (isParcel || parcelSvc) {
+    address = input.lockerAddress ?? input.address ?? null
+    const name = parcelSvc?.name ?? fulfillment
+    modeLine = `${name}${address ? ` — ${address}` : ""}${fee > 0 ? ` (frais ${fee}€)` : " (gratuit)"}`
   } else {
     address = input.address ?? null
     scheduledSlot = null
     modeLine = `Livraison à ${address ?? "adresse non précisée"}${fee > 0 ? ` (frais ${fee}€)` : ""}`
   }
 
+  const feeLabel = parcelSvc?.name ?? (isParcel ? fulfillment : "Livraison")
+
   const summary = [
-    `Nouvelle commande de ${input.customerName}`,
+    `Nouvelle commande [${shop}] — ${input.customerName}`,
     ``,
     lines,
     ``,
@@ -1003,7 +1064,7 @@ export async function adminCreateOrder(input: AdminOrderInput) {
     modeLine,
     ``,
     `Sous-total : ${subtotal}€`,
-    fee > 0 ? `${input.fulfillment === "locker" ? "Locker" : "Livraison"} : ${fee}€` : null,
+    fee > 0 ? `${feeLabel} : ${fee}€` : null,
     `TOTAL : ${total}€`,
   ].filter(Boolean).join("\n")
 
@@ -1019,10 +1080,11 @@ export async function adminCreateOrder(input: AdminOrderInput) {
     summary,
     products: productsShort,
     total,
-    fulfillment: input.fulfillment,
+    fulfillment,
     address: address ?? undefined,
     scheduledDate: scheduledDate ?? undefined,
     scheduledSlot: scheduledSlot ?? undefined,
+    shop,
   })
 
   return { ok: true as const, ...result, total }

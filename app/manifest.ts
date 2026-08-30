@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "FrenchyCali",
     short_name: "FrenchyCali",
-    description: "Accès sécurisé FrenchyCali — boutiques Cali Boyz & CaliDelivery.",
+    description: "Accès sécurisé FrenchyCali — LaCentral 31, LaCentral IDF & CaliDelivery.",
     start_url: "/",
     scope: "/",
     display: "standalone",

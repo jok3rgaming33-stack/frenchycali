@@ -183,6 +183,8 @@ export const orderThreads = pgTable("order_threads", {
   // Lignes structurées (productId) — rétrocompat : peut être null sur les anciennes commandes
   itemsJson: jsonb("items_json").$type<OrderItemSnapshot[]>().notNull().default([]),
   total: integer("total").notNull().default(0),
+  // Boutique d'origine : caliboyz31 | caliboyz94 | calidelivery
+  shop: text("shop"),
   fulfillment: text("fulfillment").notNull().default("livraison"),
   address: text("address"),
   lat: doublePrecision("lat"),
@@ -327,11 +329,13 @@ export type ProductBadge = typeof productBadges.$inferSelect
 export type PushSubscription = typeof pushSubscriptions.$inferSelect
 
 // Comptes admin (gestion à plusieurs). passwordHash optionnel (token recommandé).
+// shop = caliboyz31 | caliboyz94 | calidelivery — null = legacy (à assigner) ; le super-admin env voit tout.
 export const adminAccounts = pgTable("admin_accounts", {
   id: serial("id").primaryKey(),
   pseudo: text("pseudo").notNull(),
   token: text("token").notNull().unique(),
   passwordHash: text("password_hash"),
+  shop: text("shop"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })

@@ -10,8 +10,8 @@ import { MAP_REGION_DEFAULTS, type MapRegion } from "@/lib/map-regions"
 import "leaflet/dist/leaflet.css"
 
 const REGION_TABS: { id: MapRegion; label: string; hint: string }[] = [
-  { id: "caliboyz31", label: "Cali Boyz 31", hint: "Focus Toulouse" },
-  { id: "caliboyz94", label: "Cali Boyz 94", hint: "Focus Créteil" },
+  { id: "caliboyz31", label: "LaCentral 31", hint: "Focus Toulouse" },
+  { id: "caliboyz94", label: "LaCentral IDF", hint: "Focus Créteil" },
   { id: "calidelivery", label: "CaliDelivery", hint: "Vue France" },
 ]
 
@@ -172,21 +172,33 @@ async function fetchOptimizedTrip(
   }
 }
 
-export function AdminMap({ threads }: { threads: OrderThread[] }) {
+export function AdminMap({
+  threads,
+  lockedRegion,
+}: {
+  threads: OrderThread[]
+  /** Si fourni, la carte est figée sur cette boutique (panel indépendant). */
+  lockedRegion?: MapRegion
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<import("leaflet").Map | null>(null)
   const LRef = useRef<typeof import("leaflet") | null>(null)
   const overlayRef = useRef<import("leaflet").LayerGroup | null>(null)
   const [ready, setReady] = useState(false)
 
-  const [region, setRegion] = useState<MapRegion>("caliboyz31")
+  const initialRegion: MapRegion = lockedRegion ?? "caliboyz31"
+  const [region, setRegion] = useState<MapRegion>(initialRegion)
   const [origins, setOrigins] = useState(MAP_REGION_DEFAULTS)
   const [departure, setDeparture] = useState<LatLng>({
-    lat: MAP_REGION_DEFAULTS.caliboyz31.lat,
-    lng: MAP_REGION_DEFAULTS.caliboyz31.lng,
+    lat: MAP_REGION_DEFAULTS[initialRegion].lat,
+    lng: MAP_REGION_DEFAULTS[initialRegion].lng,
   })
   const [savingOrigin, setSavingOrigin] = useState(false)
   const [savedOrigin, setSavedOrigin] = useState(false)
+
+  useEffect(() => {
+    if (lockedRegion) setRegion(lockedRegion)
+  }, [lockedRegion])
 
   // Charge les 3 origines (31 Toulouse · 94 Créteil · delivery France).
   useEffect(() => {
@@ -195,14 +207,15 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
       .then((o) => {
         if (cancelled) return
         setOrigins(o)
-        const cur = o.caliboyz31
+        const key = lockedRegion ?? "caliboyz31"
+        const cur = o[key]
         setDeparture({ lat: cur.lat, lng: cur.lng })
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [lockedRegion])
 
   // Changement de zone : focus carte + point de départ de la région
   useEffect(() => {
@@ -531,27 +544,29 @@ export function AdminMap({ threads }: { threads: OrderThread[] }) {
         </div>
       </div>
 
-      {/* Sélecteur de zone (3 versions) */}
-      <div className="flex flex-wrap gap-2">
-        {REGION_TABS.map((tab) => {
-          const active = region === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setRegion(tab.id)}
-              className={`rounded-xl border px-3 py-2 text-left transition-colors sm:px-4 ${
-                active
-                  ? "border-accent bg-accent/15 text-foreground"
-                  : "border-border bg-card text-muted-foreground hover:bg-secondary"
-              }`}
-            >
-              <span className="block text-xs font-bold sm:text-sm">{tab.label}</span>
-              <span className="block text-[10px] opacity-80 sm:text-[11px]">{tab.hint}</span>
-            </button>
-          )
-        })}
-      </div>
+      {/* Sélecteur de zone — masqué si panel boutique verrouillé */}
+      {!lockedRegion && (
+        <div className="flex flex-wrap gap-2">
+          {REGION_TABS.map((tab) => {
+            const active = region === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setRegion(tab.id)}
+                className={`rounded-xl border px-3 py-2 text-left transition-colors sm:px-4 ${
+                  active
+                    ? "border-accent bg-accent/15 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-secondary"
+                }`}
+              >
+                <span className="block text-xs font-bold sm:text-sm">{tab.label}</span>
+                <span className="block text-[10px] opacity-80 sm:text-[11px]">{tab.hint}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
       <p className="text-[11px] text-muted-foreground">
         Zone active : <span className="font-semibold text-foreground">{regionMeta.label}</span>
         {" · "}

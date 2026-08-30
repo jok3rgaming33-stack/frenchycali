@@ -7,8 +7,8 @@ import type { Product } from "@/lib/db/schema"
 
 const FAVORITE_KEY = "favoriteUniverse"
 const PLUG_OPTIONS = [
-  { key: "caliboyz31" as const, label: "Cali Boyz 31", border: "#ffca28" },
-  { key: "caliboyz94" as const, label: "Cali Boyz 94", border: "#e65100" },
+  { key: "caliboyz31" as const, label: "LaCentral 31", border: "#ffca28" },
+  { key: "caliboyz94" as const, label: "LaCentral IDF", border: "#e65100" },
   { key: "calidelivery" as const, label: "CaliDelivery", border: "#8b00ff" },
 ]
 type PlugKey = (typeof PLUG_OPTIONS)[number]["key"]
@@ -63,7 +63,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
   const cardBorder = isDelivery ? "rgba(0,255,170,.14)" : "rgba(255,202,40,.14)"
   const glowColor = isDelivery ? "rgba(0,255,170,.35)" : "rgba(255,202,40,.35)"
 
-  const shopLabel = shop === "caliboyz31" ? "Cali Boyz 31" : shop === "caliboyz94" ? "Cali Boyz 94" : "CaliDelivery"
+  const shopLabel = shop === "caliboyz31" ? "LaCentral 31" : shop === "caliboyz94" ? "LaCentral IDF" : "CaliDelivery"
   const logo = isDelivery ? "https://i.imgur.com/K6NwuvJ.png" : "https://i.imgur.com/1gye7hI.jpeg"
 
   // Auth

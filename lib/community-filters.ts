@@ -3,6 +3,8 @@
  * Heuristiques simples côté serveur (pas un filtre exhaustif).
  */
 
+import { shopLabel, isShopId } from "@/lib/shops"
+
 // Mots / racines (fr) — formes normalisées (sans accents, minuscules)
 const INSULT_ROOTS = [
   "pute", "putain", "salope", "salop", "connard", "connasse", "conne",
@@ -123,8 +125,8 @@ export const COMMUNITY_LIMITS = {
 export function favoriteShopLabel(key: string | null | undefined): string | null {
   if (!key) return null
   const k = key.toLowerCase()
-  if (k === "caliboyz31" || k === "31") return "Cali Boyz 31"
-  if (k === "caliboyz94" || k === "94") return "Cali Boyz 94"
-  if (k === "calidelivery" || k === "delivery") return "CaliDelivery"
-  return null
+  if (k === "31" || k === "caliboyz31") return shopLabel("caliboyz31")
+  if (k === "94" || k === "caliboyz94") return shopLabel("caliboyz94")
+  if (k === "delivery" || k === "calidelivery") return shopLabel("calidelivery")
+  return isShopId(k) ? shopLabel(k) : null
 }

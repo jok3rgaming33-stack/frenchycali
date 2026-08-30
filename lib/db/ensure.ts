@@ -23,11 +23,29 @@ const ORDER_THREAD_COLUMNS = [
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_amount_eur INTEGER`,
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS payment_pay_url TEXT`,
   `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  `ALTER TABLE order_threads ADD COLUMN IF NOT EXISTS shop TEXT`,
+] as const
+
+const ADMIN_ACCOUNT_COLUMNS = [
+  `ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS shop TEXT`,
 ] as const
 
 const THREAD_MESSAGE_COLUMNS = [
   `ALTER TABLE thread_messages ADD COLUMN IF NOT EXISTS client_read_at TIMESTAMPTZ`,
 ] as const
+
+/** Backfill shop depuis le tag [shop] dans summary (commandes historiques). */
+const BACKFILL_ORDER_SHOP = `
+  UPDATE order_threads
+  SET shop = CASE
+    WHEN summary ~* '\\[caliboyz31\\]' THEN 'caliboyz31'
+    WHEN summary ~* '\\[caliboyz94\\]' THEN 'caliboyz94'
+    WHEN summary ~* '\\[calidelivery\\]' THEN 'calidelivery'
+    ELSE shop
+  END
+  WHERE shop IS NULL
+    AND summary ~* '\\[(caliboyz31|caliboyz94|calidelivery)\\]'
+`
 
 let ready = false
 let inflight: Promise<void> | null = null
@@ -36,12 +54,17 @@ export async function ensureOrderThreadsColumns(): Promise<void> {
   if (!hasDatabase || !pool || ready) return
   if (inflight) return inflight
   inflight = (async () => {
-    for (const stmt of [...ORDER_THREAD_COLUMNS, ...THREAD_MESSAGE_COLUMNS]) {
+    for (const stmt of [...ORDER_THREAD_COLUMNS, ...THREAD_MESSAGE_COLUMNS, ...ADMIN_ACCOUNT_COLUMNS]) {
       try {
         await pool!.query(stmt)
       } catch (e) {
         console.error("[ensureOrderThreadsColumns]", stmt, e)
       }
+    }
+    try {
+      await pool!.query(BACKFILL_ORDER_SHOP)
+    } catch (e) {
+      console.error("[ensureOrderThreadsColumns] backfill shop", e)
     }
     ready = true
   })()

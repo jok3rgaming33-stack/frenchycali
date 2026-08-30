@@ -30,7 +30,7 @@ export function DeliveryInfoModal({ isOpen, onClose }: DeliveryInfoModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

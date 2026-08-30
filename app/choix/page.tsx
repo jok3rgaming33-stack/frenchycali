@@ -72,8 +72,8 @@ export default function ChoixPage() {
   }
 
   const choices: { key: FavoriteKey; label: string; borderColor: string; bg: string }[] = [
-    { key:"caliboyz31", label:"Cali Boyz 31", borderColor:"#ffca28", bg:"https://i.imgur.com/amjflPT.jpeg" },
-    { key:"caliboyz94", label:"Cali Boyz 94", borderColor:"#e65100", bg:"https://i.imgur.com/e0tT4Dv.jpeg" },
+    { key:"caliboyz31", label:"LaCentral 31", borderColor:"#ffca28", bg:"https://i.imgur.com/amjflPT.jpeg" },
+    { key:"caliboyz94", label:"LaCentral IDF", borderColor:"#e65100", bg:"https://i.imgur.com/e0tT4Dv.jpeg" },
     { key:"calidelivery", label:"CaliDelivery", borderColor:"#8b00ff", bg:"https://i.imgur.com/K6NwuvJ.png" },
   ]
 

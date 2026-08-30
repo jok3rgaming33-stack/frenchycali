@@ -15,10 +15,13 @@ import {
 } from "@/app/actions/webauthn"
 import { loadWebAuthnBrowser } from "@/lib/webauthn-browser"
 import { AddToHomeScreen } from "@/components/add-to-home-screen"
+import { HowItWorksModal } from "@/components/how-it-works-modal"
 import {
   biometryLabel, clearLocalWebAuthn, getLocalCredentialIds,
   hasLocalWebAuthn, platformAuthenticatorAvailable, rememberLocalCredential,
 } from "@/lib/webauthn-client"
+
+const HOW_IT_WORKS_KEY = "howItWorksAccepted"
 
 interface Props {
   onSuccess: (opts?: { openOrders?: boolean; openMessaging?: boolean }) => void
@@ -80,6 +83,7 @@ export function LoginPage({ onSuccess, shop }: Props) {
   const [lostKeyCopied, setLostKeyCopied] = useState(false)
   const [kycSubmitting, setKycSubmitting] = useState(false)
   const [kycError, setKycError] = useState<string | null>(null)
+  const [howOpen, setHowOpen] = useState(false)
 
   useEffect(() => {
     setBioReady(hasLocalWebAuthn())
@@ -105,6 +109,21 @@ export function LoginPage({ onSuccess, shop }: Props) {
 
   const createAnonymousAccess = async () => {
     if (creating) return
+    // Gate : lecture obligatoire de « Comment ça marche » avant création
+    try {
+      if (localStorage.getItem(HOW_IT_WORKS_KEY) !== "1") {
+        setHowOpen(true)
+        return
+      }
+    } catch {
+      setHowOpen(true)
+      return
+    }
+    await runCreateAccount()
+  }
+
+  const runCreateAccount = async () => {
+    if (creating) return
     setCreating(true); setErrorCreate("")
     const key = generateKey()
     try {
@@ -129,6 +148,12 @@ export function LoginPage({ onSuccess, shop }: Props) {
     finally { setCreating(false) }
   }
 
+  const onHowItWorksConfirmed = () => {
+    try { localStorage.setItem(HOW_IT_WORKS_KEY, "1") } catch { /* ignore */ }
+    setHowOpen(false)
+    void runCreateAccount()
+  }
+
   const loginWithKey = async () => {
     const token = loginInput.trim()
     if (token.length < 30) { setError("Clé secrète trop courte."); return }
@@ -138,7 +163,14 @@ export function LoginPage({ onSuccess, shop }: Props) {
       const adminRes = await adminLogin(token)
       if (adminRes.ok) {
         localStorage.setItem("authToken", token); localStorage.setItem("isAdmin","1")
-        window.location.href = "/admin"; return
+        const dest =
+          adminRes.needsShopAssignment
+            ? "/admin?needsShop=1"
+            : adminRes.shop && adminRes.shop !== "all"
+              ? `/admin/${adminRes.shop}`
+              : "/admin"
+        window.location.href = dest
+        return
       }
       const resolved = await resolveClientLogin(token)
       if (!resolved.ok) { setError("Clé secrète invalide ou compte inexistant."); return }
@@ -310,7 +342,7 @@ export function LoginPage({ onSuccess, shop }: Props) {
   }, [isLoggedIn])
 
   const logo = isDelivery ? "https://i.imgur.com/K6NwuvJ.png" : "https://i.imgur.com/1gye7hI.jpeg"
-  const shopLabel = shop === "caliboyz31" ? "Cali Boyz 31" : shop === "caliboyz94" ? "Cali Boyz 94" : "CaliDelivery"
+  const shopLabel = shop === "caliboyz31" ? "LaCentral 31" : shop === "caliboyz94" ? "LaCentral IDF" : "CaliDelivery"
 
   // --- SUCCESS MODAL (key display) ---
   if (showResultModal) return (
@@ -631,6 +663,12 @@ export function LoginPage({ onSuccess, shop }: Props) {
           </div>
         </div>
       )}
+      <HowItWorksModal
+        isOpen={howOpen}
+        onClose={() => setHowOpen(false)}
+        requireRead
+        onConfirm={onHowItWorksConfirmed}
+      />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )

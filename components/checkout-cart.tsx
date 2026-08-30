@@ -1,20 +1,31 @@
 "use client"
 
 /**
- * Panier FrenchyCali aligné BB33 :
- * - Livraison par la société (frais selon distance, min. d'achat admin)
- * - Meet-up / en main propre (créneaux admin)
- * - Locker Mondial Relay (10€ + tuto XMR)
- * Pas de Colissimo.
+ * Panier FrenchyCali multi-boutiques :
+ * - Local (31 / IDF) : Meet-up + livraison société (frais distance)
+ * - CaliDelivery : services colis configurables (Mondial Relay, Chronopost…) + crypto
  */
 
 import { useEffect, useMemo, useState, type ReactNode, type CSSProperties } from "react"
 import {
   ChevronLeft, Trash2, Tag, Loader2, CheckCircle2, MapPin, Calendar,
-  Clock, Truck, Store, Package, Lock, X,
+  Clock, Truck, Store, Package,
 } from "lucide-react"
 import { placeOrder } from "@/app/actions/order"
-import { getCartConfig, type CartConfig, type DeliverySlot, type MeetupSlot } from "@/app/actions/settings"
+import {
+  getCartConfig,
+  getEnabledParcelServices,
+  type CartConfig,
+  type DeliverySlot,
+  type MeetupSlot,
+  type ParcelService,
+} from "@/app/actions/settings"
+import {
+  allowsCryptoCheckout,
+  isDeliveryShop as shopIsDelivery,
+  isLocalShop,
+  type ShopId,
+} from "@/lib/shops"
 
 type CartItem = { productId: number; title: string; variant: string; price: number; qty: number }
 
@@ -30,8 +41,6 @@ interface Props {
   primaryColor: string
   cardBorder: string
 }
-
-const FEE_LOCKER = 10
 
 /** 0–10 km : 10€ | 10–20 km : 20€ | >20 km : 20€ + 1€/km */
 function calcDeliveryFee(km: number): number {
@@ -116,11 +125,22 @@ function slotMatchesDay(label: string, dayName: string): boolean {
   return true
 }
 
+function isRelayService(svc: ParcelService | undefined): boolean {
+  if (!svc) return false
+  const id = svc.id.toLowerCase()
+  const name = svc.name.toLowerCase()
+  return id.includes("mondial") || id.includes("relay") || name.includes("mondial") || name.includes("locker") || name.includes("relais")
+}
+
 export function CheckoutCart({
   cart, setCart, customerToken, customerName, shop, onBack, onOrderPlaced,
-  accentColor, cardBorder,
+  accentColor, primaryColor, cardBorder,
 }: Props) {
-  const isDeliveryShop = shop === "calidelivery"
+  const shopId = shop as ShopId
+  const isDeliveryShop = shopIsDelivery(shopId)
+  const localShop = isLocalShop(shopId)
+  const cryptoOk = allowsCryptoCheckout(shopId)
+
   const btnStyle: CSSProperties = isDeliveryShop
     ? { background: "linear-gradient(120deg,#8b00ff,#00ff9d)", color: "#000814" }
     : { background: "linear-gradient(120deg,#ffca28,#e65100)", color: "#0f0d07" }
@@ -140,14 +160,18 @@ export function CheckoutCart({
     fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer",
   })
 
-  const [fulfillment, setFulfillment] = useState<"livraison" | "meetup" | "locker">(
-    isDeliveryShop ? "livraison" : "meetup",
-  )
+  const [parcelServices, setParcelServices] = useState<ParcelService[]>([])
+  const [fulfillment, setFulfillment] = useState<string>(localShop ? "meetup" : "")
   const isMeetup = fulfillment === "meetup"
-  const isLocker = fulfillment === "locker"
+  const isLocalLivraison = fulfillment === "livraison"
+  const selectedParcel = useMemo(
+    () => parcelServices.find((s) => s.id === fulfillment),
+    [parcelServices, fulfillment],
+  )
+  const isParcel = isDeliveryShop && !!selectedParcel
 
   const [address, setAddress] = useState("")
-  const [lockerAddress, setLockerAddress] = useState("")
+  const [parcelAddress, setParcelAddress] = useState("")
   const [date, setDate] = useState("")
   const [slot, setSlot] = useState("")
   const [meetupHour, setMeetupHour] = useState("")
@@ -166,23 +190,33 @@ export function CheckoutCart({
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [resolvedLabel, setResolvedLabel] = useState<string | null>(null)
 
-  const [xmrModalOpen, setXmrModalOpen] = useState(false)
-  const [xmrConfirmed, setXmrConfirmed] = useState(false)
-
   useEffect(() => {
-    getCartConfig()
+    getCartConfig(shop)
       .then((c) => setConfig(c))
       .catch(() => {})
-  }, [])
+  }, [shop])
+
+  useEffect(() => {
+    if (!isDeliveryShop) return
+    getEnabledParcelServices()
+      .then((list) => {
+        setParcelServices(list)
+        setFulfillment((prev) => {
+          if (prev && list.some((s) => s.id === prev)) return prev
+          return list[0]?.id ?? ""
+        })
+      })
+      .catch(() => setParcelServices([]))
+  }, [isDeliveryShop])
 
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0)
   const deliveryAllowed = subtotal >= config.minDeliveryAmount
 
   useEffect(() => {
-    if (!deliveryAllowed && fulfillment === "livraison") {
-      setFulfillment(isDeliveryShop ? "locker" : "meetup")
+    if (localShop && !deliveryAllowed && fulfillment === "livraison") {
+      setFulfillment("meetup")
     }
-  }, [deliveryAllowed, fulfillment, isDeliveryShop])
+  }, [deliveryAllowed, fulfillment, localShop])
 
   const now = new Date()
   const { minDate, isCutoff, cutoffLabel } = getOrderCutoff(now)
@@ -217,10 +251,13 @@ export function CheckoutCart({
 
   const deliveryFee = useMemo(() => {
     if (isMeetup) return 0
-    if (isLocker) return FEE_LOCKER
-    if (distanceKm == null) return 0
-    return calcDeliveryFee(distanceKm)
-  }, [isMeetup, isLocker, distanceKm])
+    if (isParcel) return selectedParcel?.costEur ?? 0
+    if (isLocalLivraison) {
+      if (distanceKm == null) return 0
+      return calcDeliveryFee(distanceKm)
+    }
+    return 0
+  }, [isMeetup, isParcel, selectedParcel, isLocalLivraison, distanceKm])
 
   const total = Math.max(0, subtotal + deliveryFee)
 
@@ -263,8 +300,9 @@ export function CheckoutCart({
 
   const canValidate =
     cart.length > 0 &&
-    (isLocker
-      ? !!lockerAddress.trim() && xmrConfirmed
+    !!fulfillment &&
+    (isParcel
+      ? !!parcelAddress.trim()
       : !!date &&
         (isMeetup
           ? !!meetupHour
@@ -287,13 +325,13 @@ export function CheckoutCart({
       fulfillment,
       address: isMeetup
         ? undefined
-        : isLocker
-          ? lockerAddress.trim()
+        : isParcel
+          ? parcelAddress.trim()
           : (resolvedLabel ?? address.trim()),
-      lat: isMeetup || isLocker ? null : coords?.lat ?? null,
-      lng: isMeetup || isLocker ? null : coords?.lng ?? null,
-      scheduledDate: isLocker ? undefined : date || undefined,
-      scheduledSlot: isLocker ? undefined : isMeetup ? meetupHour : slot,
+      lat: isMeetup || isParcel ? null : coords?.lat ?? null,
+      lng: isMeetup || isParcel ? null : coords?.lng ?? null,
+      scheduledDate: isParcel ? undefined : date || undefined,
+      scheduledSlot: isParcel ? undefined : isMeetup ? meetupHour : slot,
       promoCode: promoCode || undefined,
       deliveryFee,
       shop,
@@ -322,7 +360,7 @@ export function CheckoutCart({
       setDone({
         trackingToken: res.trackingToken!,
         threadId: res.threadId!,
-        cryptoPayment: res.cryptoPayment,
+        cryptoPayment: cryptoOk ? res.cryptoPayment : undefined,
       })
     } catch {
       setError("Erreur réseau. Vérifie ta connexion et réessaie.")
@@ -332,7 +370,7 @@ export function CheckoutCart({
   }
 
   if (done) {
-    const payUrl = done.cryptoPayment?.enabled ? done.cryptoPayment.invoiceUrl : null
+    const payUrl = cryptoOk && done.cryptoPayment?.enabled ? done.cryptoPayment.invoiceUrl : null
     return (
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px", textAlign: "center" }}>
         <div style={{ borderRadius: 24, border: `1px solid ${cardBorder}`, background: "rgba(20,18,12,.92)", padding: "40px 24px" }}>
@@ -341,8 +379,8 @@ export function CheckoutCart({
             Commande passée !
           </h2>
           <p style={{ margin: "0 0 12px", fontSize: 13, color: textMuted, lineHeight: 1.55 }}>
-            {isLocker
-              ? "Mode Locker Mondial Relay — ouvre la messagerie pour sauvegarder ton token TRK_ (affiché une seule fois)."
+            {isParcel
+              ? "Commande colis — ouvre la messagerie pour sauvegarder ton token TRK_ (affiché une seule fois)."
               : "Tu peux suivre ta commande et écrire au vendeur depuis Mes commandes."}
           </p>
           <p style={{ margin: "0 0 16px", fontSize: 11, color: "rgba(200,190,170,.5)", wordBreak: "break-all" }}>
@@ -394,7 +432,12 @@ export function CheckoutCart({
     )
   }
 
-  const modes: { id: "livraison" | "meetup" | "locker"; label: string; icon: ReactNode; disabled?: boolean; title?: string }[] = [
+  const localModes: { id: string; label: string; icon: ReactNode; disabled?: boolean; title?: string }[] = [
+    {
+      id: "meetup",
+      label: "Meet-up",
+      icon: <Store style={{ width: 15, height: 15 }} />,
+    },
     {
       id: "livraison",
       label: "Livraison",
@@ -402,15 +445,22 @@ export function CheckoutCart({
       disabled: !deliveryAllowed,
       title: !deliveryAllowed ? `Disponible dès ${config.minDeliveryAmount}€ d'achat` : "Livraison par nos soins",
     },
-    ...(!isDeliveryShop
-      ? [{ id: "meetup" as const, label: "Meet-up", icon: <Store style={{ width: 15, height: 15 }} /> }]
-      : []),
-    {
-      id: "locker",
-      label: "Locker MR",
-      icon: <Package style={{ width: 15, height: 15 }} />,
-    },
   ]
+
+  const parcelModes: { id: string; label: string; icon: ReactNode; feeLabel: string }[] = parcelServices.map((s) => ({
+    id: s.id,
+    label: s.name,
+    icon: <Package style={{ width: 15, height: 15 }} />,
+    feeLabel: s.costEur == null || s.costEur === 0 ? "Gratuit" : `${s.costEur}€`,
+  }))
+
+  const modes = isDeliveryShop ? parcelModes : localModes
+  const parcelAddressLabel = isRelayService(selectedParcel)
+    ? "Adresse du point relais"
+    : "Adresse de livraison du colis"
+  const parcelAddressPlaceholder = isRelayService(selectedParcel)
+    ? "Ex. Locker Leclerc — 12 rue de la Paix, 75001 Paris"
+    : "N°, rue, code postal, ville"
 
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px" }}>
@@ -444,7 +494,7 @@ export function CheckoutCart({
         )}
       </div>
 
-      {/* Modes — livraison société / meetup / locker MR */}
+      {/* Modes */}
       <div style={{ marginBottom: 12 }}>
         <p style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted }}>
           Mode de récupération
@@ -454,76 +504,76 @@ export function CheckoutCart({
             <button
               key={m.id}
               type="button"
-              disabled={m.disabled}
-              title={m.title}
-              onClick={() => !m.disabled && setFulfillment(m.id)}
+              disabled={"disabled" in m ? !!m.disabled : false}
+              title={"title" in m ? m.title : undefined}
+              onClick={() => {
+                if ("disabled" in m && m.disabled) return
+                setFulfillment(m.id)
+              }}
               style={{
                 ...chip(fulfillment === m.id),
-                opacity: m.disabled ? 0.4 : 1,
-                cursor: m.disabled ? "not-allowed" : "pointer",
+                opacity: "disabled" in m && m.disabled ? 0.4 : 1,
+                cursor: "disabled" in m && m.disabled ? "not-allowed" : "pointer",
+                flexDirection: isDeliveryShop ? "column" : "row",
+                gap: isDeliveryShop ? 4 : 8,
               }}
             >
-              {m.icon}
-              {m.label}
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {m.icon}
+                {m.label}
+              </span>
+              {"feeLabel" in m && (
+                <span style={{ fontSize: 10, opacity: 0.75 }}>{m.feeLabel}</span>
+              )}
             </button>
           ))}
         </div>
-        {!deliveryAllowed && (
+        {localShop && !deliveryAllowed && (
           <p style={{ margin: "10px 0 0", fontSize: 12, color: textMuted, lineHeight: 1.5, padding: "10px 12px", borderRadius: 12, border: `1px solid ${cardBorder}`, background: "rgba(0,0,0,.25)" }}>
             La <strong style={{ color: textMain }}>livraison par nos soins</strong> est disponible à partir de{" "}
             <strong style={{ color: accentColor }}>{config.minDeliveryAmount}€</strong> d&apos;achat.
             Ajoute encore <strong style={{ color: textMain }}>{Math.max(0, config.minDeliveryAmount - subtotal)}€</strong>
-            {isDeliveryShop ? ", ou choisis Locker Mondial Relay." : ", ou choisis le meet-up / locker."}
+            , ou choisis le meet-up.
           </p>
         )}
-        {fulfillment === "livraison" && (
+        {isLocalLivraison && (
           <p style={{ margin: "8px 0 0", fontSize: 11, color: textMuted }}>
             Livraison discrète effectuée par notre équipe — frais selon la distance (10 € jusqu&apos;à 10 km, 20 € jusqu&apos;à 20 km, puis +1 €/km).
           </p>
         )}
+        {isDeliveryShop && parcelServices.length === 0 && (
+          <p style={{ margin: "10px 0 0", fontSize: 12, color: "#f87171" }}>
+            Aucun service colis disponible pour le moment.
+          </p>
+        )}
       </div>
 
-      {/* Locker Mondial Relay */}
-      {isLocker && (
+      {/* Adresse colis (CaliDelivery) */}
+      {isParcel && (
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "block", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted, marginBottom: 6 }}>
             <Package style={{ width: 12, height: 12, display: "inline", marginRight: 4 }} />
-            Adresse du Locker Mondial Relay
+            {parcelAddressLabel}
           </label>
           <textarea
-            value={lockerAddress}
-            onChange={(e) => setLockerAddress(e.target.value)}
+            value={parcelAddress}
+            onChange={(e) => setParcelAddress(e.target.value)}
             rows={2}
-            placeholder="Ex. Locker Leclerc — 12 rue de la Paix, 75001 Paris"
+            placeholder={parcelAddressPlaceholder}
             style={{ ...inputStyle, resize: "none" }}
           />
           <p style={{ margin: "8px 0 0", fontSize: 12, color: textMuted }}>
-            Frais d&apos;envoi Locker : <strong style={{ color: accentColor }}>{FEE_LOCKER}€</strong> · délai 3 à 5 jours ouvrés après validation du paiement XMR.
+            Frais d&apos;envoi {selectedParcel?.name ?? ""} :{" "}
+            <strong style={{ color: accentColor }}>
+              {(selectedParcel?.costEur ?? 0) === 0 ? "Gratuit" : `${selectedParcel?.costEur}€`}
+            </strong>
+            {" · "}délai selon le transporteur après validation du paiement.
           </p>
-          <div style={{ marginTop: 12, padding: 14, borderRadius: 16, border: `1px solid ${cardBorder}`, background: "rgba(0,0,0,.3)" }}>
-            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: textMain }}>Paiement Monero (XMR) requis</p>
-            <p style={{ margin: "0 0 10px", fontSize: 12, color: textMuted, lineHeight: 1.5 }}>
-              Les commandes Locker sont expédiées uniquement après réception du paiement en XMR. Lis le tutoriel avant de valider.
-            </p>
-            <button
-              type="button"
-              onClick={() => setXmrModalOpen(true)}
-              style={{ width: "100%", marginBottom: 10, padding: "10px", borderRadius: 12, border: `1px solid ${accentColor}66`, background: `${accentColor}18`, color: accentColor, fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-            >
-              <Lock style={{ width: 14, height: 14 }} /> Lire le tutoriel paiement XMR
-            </button>
-            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", padding: 10, borderRadius: 12, border: `1px solid ${xmrConfirmed ? accentColor : cardBorder}`, background: xmrConfirmed ? `${accentColor}15` : "transparent" }}>
-              <input type="checkbox" checked={xmrConfirmed} onChange={(e) => setXmrConfirmed(e.target.checked)} style={{ marginTop: 2 }} />
-              <span style={{ fontSize: 12, color: textMuted, lineHeight: 1.45 }}>
-                J&apos;ai lu le tutoriel XMR. Je sais que ma commande sera expédiée après réception du paiement.
-              </span>
-            </label>
-          </div>
         </div>
       )}
 
-      {/* Adresse livraison société */}
-      {fulfillment === "livraison" && (
+      {/* Adresse livraison société (local) */}
+      {isLocalLivraison && (
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "block", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted, marginBottom: 6 }}>
             <MapPin style={{ width: 12, height: 12, display: "inline", marginRight: 4 }} />
@@ -560,8 +610,8 @@ export function CheckoutCart({
         </div>
       )}
 
-      {/* Date + créneaux (pas pour locker) */}
-      {!isLocker && (
+      {/* Date + créneaux (local uniquement) */}
+      {localShop && (
         <>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted, marginBottom: 6 }}>
@@ -619,11 +669,11 @@ export function CheckoutCart({
         </>
       )}
 
-      {isLocker && (
+      {isParcel && (
         <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderRadius: 14, border: `1px solid ${cardBorder}`, background: "rgba(0,0,0,.25)" }}>
           <Calendar style={{ width: 16, height: 16, color: accentColor, flexShrink: 0 }} />
           <p style={{ margin: 0, fontSize: 13, color: textMain }}>
-            Expédition en <strong>3 à 5 jours ouvrés</strong> après validation du dépôt XMR.
+            Expédition après validation du paiement — délai selon le transporteur choisi.
           </p>
         </div>
       )}
@@ -649,8 +699,14 @@ export function CheckoutCart({
         </div>
         {!isMeetup && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 13, color: textMuted }}>
-            <span>{isLocker ? "Locker Mondial Relay" : "Livraison (société)"}</span>
-            <span>{isLocker || distanceKm != null ? `${deliveryFee}€` : "—"}</span>
+            <span>{isParcel ? (selectedParcel?.name ?? "Envoi colis") : "Livraison (société)"}</span>
+            <span>
+              {isParcel || distanceKm != null
+                ? deliveryFee === 0
+                  ? "Gratuit"
+                  : `${deliveryFee}€`
+                : "—"}
+            </span>
           </div>
         )}
         {promoCode && (
@@ -680,45 +736,12 @@ export function CheckoutCart({
       </button>
       {!canValidate && cart.length > 0 && (
         <p style={{ margin: "10px 0 0", textAlign: "center", fontSize: 11, color: textMuted }}>
-          {isLocker
-            ? "Adresse Locker + confirmation tutoriel XMR requis."
+          {isParcel
+            ? "Adresse du point / colis requise."
             : isMeetup
               ? "Date et heure de meet-up requis."
               : "Adresse (frais calculés), date et créneau requis."}
         </p>
-      )}
-
-      {/* Modal XMR */}
-      {xmrModalOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.85)", padding: 16 }} onClick={() => setXmrModalOpen(false)}>
-          <div style={{ width: "100%", maxWidth: 400, maxHeight: "90vh", overflow: "auto", borderRadius: 24, border: `1px solid ${cardBorder}`, background: isDeliveryShop ? "#12001f" : "rgba(20,18,12,.98)", padding: 24 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: textMain, display: "flex", alignItems: "center", gap: 8 }}>
-                <Lock style={{ width: 16, height: 16, color: accentColor }} /> Paiement Monero (XMR)
-              </h3>
-              <button type="button" onClick={() => setXmrModalOpen(false)} style={{ background: "none", border: "none", color: textMuted, cursor: "pointer" }}><X style={{ width: 18, height: 18 }} /></button>
-            </div>
-            <p style={{ fontSize: 12, color: textMuted, lineHeight: 1.55, marginBottom: 12 }}>
-              Monero est confidentiel et intraçable. Les commandes Locker sont expédiées après réception du paiement XMR.
-            </p>
-            <ol style={{ margin: "0 0 14px", paddingLeft: 18, fontSize: 12, color: textMuted, lineHeight: 1.55 }}>
-              <li style={{ marginBottom: 8 }}><strong style={{ color: textMain }}>Cake Wallet</strong> — installe l&apos;app (iOS/Android).</li>
-              <li style={{ marginBottom: 8 }}><strong style={{ color: textMain }}>Achète du LTC</strong> sur Coinbase (passerelle vers XMR).</li>
-              <li style={{ marginBottom: 8 }}><strong style={{ color: textMain }}>Envoie en XMR</strong> à l&apos;adresse fournie dans ton suivi locker (swap LTC→XMR dans Cake).</li>
-              <li><strong style={{ color: textMain }}>Confirme le dépôt</strong> dans le suivi (« J&apos;ai effectué mon dépôt »).</li>
-            </ol>
-            <p style={{ fontSize: 11, color: "#fbbf24", lineHeight: 1.45, marginBottom: 14 }}>
-              Vérifie l&apos;adresse XMR caractère par caractère — une erreur = fonds perdus. Seed phrase sur papier uniquement.
-            </p>
-            <button
-              type="button"
-              onClick={() => { setXmrConfirmed(true); setXmrModalOpen(false) }}
-              style={{ ...btnStyle, width: "100%", padding: 12, borderRadius: 999, border: "none", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
-            >
-              J&apos;ai compris, je confirme
-            </button>
-          </div>
-        </div>
       )}
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>

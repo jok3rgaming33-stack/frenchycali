@@ -248,12 +248,12 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/90 p-4"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-background/90"
       role="dialog"
       aria-modal="true"
       aria-label="Messagerie"
     >
-      <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-3xl border border-accent/40 bg-card">
+      <div className="modal-shell w-full max-w-md rounded-3xl border border-accent/40 bg-card">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border p-6">
           <div className="flex items-center gap-3">

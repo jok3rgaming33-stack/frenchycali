@@ -12,6 +12,16 @@ import { statusMeta, statusThreadMessage } from "@/lib/order-status"
 import { ensureRatingsSchema } from "@/app/actions/ratings"
 import { buildRatingInviteMessage } from "@/lib/order-items"
 import { createCryptoInvoiceForOrder } from "@/app/actions/crypto-payment"
+import { getEnabledParcelServices, getParcelServices } from "@/app/actions/settings"
+import {
+  LOCAL_FULFILLMENTS,
+  LEGACY_LOCKER_FULFILLMENT,
+  allowsCryptoCheckout,
+  isLocalShop,
+  isParcelFulfillment,
+  isShopId,
+  type ShopId,
+} from "@/lib/shops"
 
 export type CartItem = { productId?: number; title: string; variant: string; price: number; qty: number }
 
@@ -19,23 +29,23 @@ export type PlaceOrderInput = {
   customerToken: string
   customerName: string
   items: CartItem[]
-  fulfillment: "livraison" | "meetup" | "locker"
+  /** meetup | livraison (local) ou id service colis (CaliDelivery) */
+  fulfillment: string
   address?: string
   lat?: number | null
   lng?: number | null
   scheduledDate?: string
   scheduledSlot?: string
   promoCode?: string
-  /** Frais livraison société (distance) ou locker MR — 0 pour meetup */
+  /** Frais livraison société (distance) ou service colis — 0 pour meetup / gratuit */
   deliveryFee?: number
   shop: "caliboyz31" | "caliboyz94" | "calidelivery"
 }
 
 /**
- * Place une commande (aligné BB33) :
- * - livraison = par la société (frais distance)
- * - meetup = en main propre
- * - locker = Mondial Relay + token TRK_ one-shot
+ * Place une commande multi-boutiques :
+ * - Local (31 / IDF) : meetup | livraison société
+ * - CaliDelivery : service colis (id) + token TRK_ one-shot
  */
 export async function placeOrder(input: PlaceOrderInput) {
   try {
@@ -46,6 +56,39 @@ export async function placeOrder(input: PlaceOrderInput) {
   }
 }
 
+async function resolveFulfillment(
+  shop: ShopId,
+  raw: string,
+): Promise<{ ok: true; fulfillment: string; parcelName?: string } | { ok: false; error: string }> {
+  const f = (raw ?? "").trim()
+  if (!f) return { ok: false, error: "Mode de récupération manquant." }
+
+  if (isLocalShop(shop)) {
+    if (!(LOCAL_FULFILLMENTS as readonly string[]).includes(f)) {
+      return { ok: false, error: "Mode invalide pour cette boutique (meet-up ou livraison uniquement)." }
+    }
+    return { ok: true, fulfillment: f }
+  }
+
+  // CaliDelivery — services colis
+  const enabled = await getEnabledParcelServices()
+  let id = f
+  if (f === LEGACY_LOCKER_FULFILLMENT) {
+    const mr = enabled.find((s) => s.id === "mondial_relay")
+    if (!mr) {
+      const all = await getParcelServices()
+      if (all.some((s) => s.id === "mondial_relay")) {
+        return { ok: false, error: "Locker Mondial Relay est désactivé." }
+      }
+      return { ok: false, error: "Service Mondial Relay introuvable." }
+    }
+    id = "mondial_relay"
+  }
+  const svc = enabled.find((s) => s.id === id)
+  if (!svc) return { ok: false, error: "Service colis invalide ou désactivé." }
+  return { ok: true, fulfillment: svc.id, parcelName: svc.name }
+}
+
 async function placeOrderInner(input: PlaceOrderInput) {
   if (!hasDatabase) return { ok: false as const, error: "Service temporairement indisponible." }
   await ensureOrderThreadsColumns()
@@ -53,16 +96,23 @@ async function placeOrderInner(input: PlaceOrderInput) {
     customerToken,
     customerName,
     items,
-    fulfillment,
     address,
     lat,
     lng,
     scheduledDate,
     scheduledSlot,
     promoCode,
-    shop,
+    shop: shopRaw,
   } = input
   if (!customerToken || !items?.length) return { ok: false as const, error: "Données invalides." }
+  if (!isShopId(shopRaw)) return { ok: false as const, error: "Boutique invalide." }
+  const shop: ShopId = shopRaw
+
+  const resolved = await resolveFulfillment(shop, input.fulfillment)
+  if (!resolved.ok) return { ok: false as const, error: resolved.error }
+  const fulfillment = resolved.fulfillment
+  const parcelName = resolved.parcelName
+  const parcelMode = isParcelFulfillment(fulfillment)
 
   const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0)
   const deliveryFee = Math.max(0, Math.round(Number(input.deliveryFee) || 0))
@@ -133,34 +183,40 @@ async function placeOrderInner(input: PlaceOrderInput) {
     await ensureRatingsSchema()
   } catch { /* schema best-effort */ }
 
+  const feeLabel =
+    deliveryFee > 0 ? ` (frais ${deliveryFee}€)` : deliveryFee === 0 && parcelMode ? " (gratuit)" : ""
+
   const modeLabel =
     fulfillment === "meetup"
       ? `Meet-up / en main propre — ${scheduledSlot || "créneau à confirmer"}`
-      : fulfillment === "locker"
-        ? `Locker Mondial Relay — ${address || "point à confirmer"} (frais ${deliveryFee}€)`
-        : `Livraison par nos soins — ${address || "adresse"} — ${scheduledSlot || "créneau"} (frais ${deliveryFee}€)`
+      : parcelMode
+        ? `${parcelName || fulfillment} — ${address || "adresse à confirmer"}${feeLabel}`
+        : `Livraison par nos soins — ${address || "adresse"} — ${scheduledSlot || "créneau"}${
+            deliveryFee > 0 ? ` (frais ${deliveryFee}€)` : ""
+          }`
+
+  const feeSummaryLabel = parcelMode ? parcelName || "Envoi colis" : "Livraison"
 
   const summary = [
     `Nouvelle commande [${shop}] — ${customerName}`,
     ``,
     lines,
     ``,
-    fulfillment !== "locker" && scheduledDate ? `Date : ${scheduledDate}` : null,
+    !parcelMode && scheduledDate ? `Date : ${scheduledDate}` : null,
     modeLabel,
     promoCodeUsed && discount > 0 ? `Code ${promoCodeUsed} : -${discount}€` : null,
     ``,
     `Sous-total : ${subtotal}€`,
-    deliveryFee > 0 ? `${fulfillment === "locker" ? "Locker MR" : "Livraison"} : ${deliveryFee}€` : null,
+    deliveryFee > 0 ? `${feeSummaryLabel} : ${deliveryFee}€` : null,
     discount > 0 ? `Réduction : -${discount}€` : null,
     `TOTAL : ${total}€`,
   ]
     .filter(Boolean)
     .join("\n")
 
-  const trackingToken =
-    fulfillment === "locker"
-      ? `TRK_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
-      : `ORD_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
+  const trackingToken = parcelMode
+    ? `TRK_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
+    : `ORD_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`
 
   const baseValues = {
     customerName: customerName || "Client",
@@ -169,6 +225,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     summary: summary.slice(0, 4000),
     products: productsShort,
     total,
+    shop,
     fulfillment,
     address: address?.trim() || null,
     lat: lat ?? null,
@@ -210,11 +267,12 @@ async function placeOrderInner(input: PlaceOrderInput) {
     body: summary,
   })
 
-  if (fulfillment === "locker") {
+  if (parcelMode) {
+    const serviceLabel = parcelName || fulfillment
     const trkBody = [
       `⚠️ ATTENTION — LIS CE MESSAGE ATTENTIVEMENT ⚠️`,
       ``,
-      `Ton token de suivi Locker est :`,
+      `Ton token de suivi colis (${serviceLabel}) est :`,
       ``,
       `${trackingToken}`,
       ``,
@@ -231,7 +289,8 @@ async function placeOrderInner(input: PlaceOrderInput) {
         trackingToken: `TRK_MSG_${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`,
         summary: `Token de suivi — Commande #${thread.id}`,
         total: 0,
-        fulfillment: "locker",
+        shop,
+        fulfillment,
         status: "trk_token",
       })
       .returning()
@@ -243,7 +302,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     })
 
     await notifyCustomer(customerToken, {
-      title: "Token de suivi Locker — A SAUVEGARDER",
+      title: "Token de suivi colis — À SAUVEGARDER",
       body: "Ouvre la messagerie maintenant pour récupérer ton token de suivi. Il sera supprimé après lecture.",
       url: "/",
       tag: `trk-${thread.id}`,
@@ -259,7 +318,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
   try {
     await notifyVendor({
       title: `Nouvelle commande ${shop}`,
-      body: `${customerName} — ${total}€ — ${fulfillment}${fulfillment === "locker" ? " LOCKER" : ""}`,
+      body: `${customerName} — ${total}€ — ${parcelName || fulfillment}${parcelMode ? " COLIS" : ""}`,
       url: `/admin`,
       tag: "new-order",
     })
@@ -267,7 +326,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     /* push optionnel */
   }
 
-  // Paiement multi-crypto (NOWPayments) — optionnel, ne bloque jamais la commande
+  // Paiement multi-crypto (NOWPayments) — CaliDelivery uniquement + gateway actif
   let cryptoPayment: {
     enabled: boolean
     invoiceUrl?: string
@@ -275,26 +334,28 @@ async function placeOrderInner(input: PlaceOrderInput) {
     error?: string
   } = { enabled: false }
 
-  try {
-    const inv = await createCryptoInvoiceForOrder({
-      threadId: thread.id,
-      totalEur: total,
-      customerToken,
-      customerName: customerName || "Client",
-      shop,
-    })
-    if (inv.ok) {
-      cryptoPayment = {
-        enabled: true,
-        invoiceUrl: inv.invoiceUrl,
-        paymentStatus: inv.paymentStatus,
+  if (allowsCryptoCheckout(shop)) {
+    try {
+      const inv = await createCryptoInvoiceForOrder({
+        threadId: thread.id,
+        totalEur: total,
+        customerToken,
+        customerName: customerName || "Client",
+        shop,
+      })
+      if (inv.ok) {
+        cryptoPayment = {
+          enabled: true,
+          invoiceUrl: inv.invoiceUrl,
+          paymentStatus: inv.paymentStatus,
+        }
+      } else if (!inv.skipped) {
+        cryptoPayment = { enabled: false, error: inv.error }
+        console.error("[placeOrder] crypto invoice skipped:", inv.error)
       }
-    } else if (!inv.skipped) {
-      cryptoPayment = { enabled: false, error: inv.error }
-      console.error("[placeOrder] crypto invoice skipped:", inv.error)
+    } catch (e) {
+      console.error("[placeOrder] crypto invoice error:", e)
     }
-  } catch (e) {
-    console.error("[placeOrder] crypto invoice error:", e)
   }
 
   revalidatePath("/admin")
@@ -391,8 +452,8 @@ export async function updateOrderStatus(threadId: number, status: string) {
     const mode =
       thread[0].fulfillment === "meetup"
         ? "en meet-up"
-        : thread[0].fulfillment === "locker"
-          ? "en Locker Mondial Relay"
+        : isParcelFulfillment(thread[0].fulfillment)
+          ? "en colis"
           : "en livraison"
     const points = computeLoyaltyPoints(thread[0].total ?? 0)
     const body1 =

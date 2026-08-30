@@ -237,12 +237,12 @@ export function CommunityChatModal({
       role="dialog"
       aria-modal="true"
       aria-label="Canal communautaire"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border shadow-2xl"
+        className="modal-shell w-full max-w-lg overflow-hidden rounded-3xl border shadow-2xl"
         style={{
           borderColor: cardBorder,
           background: bg,

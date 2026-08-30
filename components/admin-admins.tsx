@@ -7,14 +7,18 @@ import {
   createAdmin,
   setAdminActive,
   setAdminPassword,
+  setAdminShop,
   regenerateAdminToken,
   deleteAdmin,
   type AdminRow,
 } from "@/app/actions/admins"
 import { UserPlus, Copy, Check, KeyRound, RefreshCw, Trash2, ShieldOff, ShieldCheck, Loader2, AlertTriangle } from "lucide-react"
 
-export function AdminAdmins() {
-  const { data: admins, mutate, isLoading } = useSWR("admin-admins", () => listAdmins())
+import type { ShopId } from "@/lib/shops"
+import { SHOP_LABELS } from "@/lib/shops"
+
+export function AdminAdmins({ shop }: { shop: ShopId }) {
+  const { data: admins, mutate, isLoading } = useSWR(`admin-admins-${shop}`, () => listAdmins(shop))
   const [pseudo, setPseudo] = useState("")
   const [usePassword, setUsePassword] = useState(false)
   const [password, setPassword] = useState("")
@@ -36,7 +40,7 @@ export function AdminAdmins() {
     if (creating) return
     setError(null)
     setCreating(true)
-    const res = await createAdmin({ pseudo, password: usePassword ? password : null })
+    const res = await createAdmin({ pseudo, password: usePassword ? password : null, shop })
     setCreating(false)
     if (!res.ok) {
       setError(res.error ?? "Erreur.")
@@ -74,6 +78,16 @@ export function AdminAdmins() {
     mutate()
   }
 
+  const handleAssignShop = async (a: AdminRow) => {
+    if (!window.confirm(`Rattacher ${a.pseudo} à ${SHOP_LABELS[shop]} ?`)) return
+    const res = await setAdminShop(a.id, shop)
+    if (!res.ok) {
+      setError(res.error ?? "Impossible d'assigner la boutique.")
+      return
+    }
+    mutate()
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Création */}
@@ -83,7 +97,8 @@ export function AdminAdmins() {
           Ajouter un administrateur
         </h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Un token unique est généré pour chaque admin. Tu peux aussi définir un mot de passe.
+          Admins de <strong>{SHOP_LABELS[shop]}</strong> uniquement. Un token unique est généré ;
+          tu peux aussi définir un mot de passe.
         </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -149,8 +164,17 @@ export function AdminAdmins() {
               <li key={a.id} className="flex flex-col gap-3 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 font-medium">
+                    <div className="flex flex-wrap items-center gap-2 font-medium">
                       {a.pseudo}
+                      {a.shopLabel ? (
+                        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                          {a.shopLabel}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-500">
+                          Boutique non assignée
+                        </span>
+                      )}
                       {!a.active && (
                         <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-semibold text-destructive">
                           Révoqué
@@ -181,6 +205,14 @@ export function AdminAdmins() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {!a.shop && (
+                    <button
+                      onClick={() => handleAssignShop(a)}
+                      className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+                    >
+                      Assigner à {SHOP_LABELS[shop]}
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleActive(a)}
                     className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"

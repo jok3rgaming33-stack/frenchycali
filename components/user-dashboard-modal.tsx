@@ -160,12 +160,12 @@ export function UserDashboardModal({ isOpen, onClose, userData, onLogout }: User
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/90 p-4"
+      className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-background/90"
       role="dialog"
       aria-modal="true"
       aria-label="Mon espace"
     >
-      <div className="w-full max-w-md rounded-3xl border border-accent/40 bg-card p-8">
+      <div className="modal-shell w-full max-w-md overflow-y-auto rounded-3xl border border-accent/40 bg-card p-8">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-2xl font-bold">Mon espace</h2>
           <button

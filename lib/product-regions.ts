@@ -1,9 +1,11 @@
 /** Disponibilité multi-boutiques d'un produit. */
 
+import { SHOP_LABELS } from "@/lib/shops"
+
 export const SHOP_REGION_OPTIONS = [
-  { value: "caliboyz31" as const, label: "Cali Boyz 31" },
-  { value: "caliboyz94" as const, label: "Cali Boyz 94" },
-  { value: "calidelivery" as const, label: "CaliDelivery" },
+  { value: "caliboyz31" as const, label: SHOP_LABELS.caliboyz31 },
+  { value: "caliboyz94" as const, label: SHOP_LABELS.caliboyz94 },
+  { value: "calidelivery" as const, label: SHOP_LABELS.calidelivery },
 ]
 
 export type ShopRegionKey = (typeof SHOP_REGION_OPTIONS)[number]["value"]

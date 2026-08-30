@@ -150,3 +150,32 @@ body {
 .badge-blink {
   animation: badge-blink-kf 1.2s ease-in-out infinite;
 }
+
+/* Safe-area (barre gestuelle Android / encoche iOS) */
+.pt-safe { padding-top: max(0.75rem, env(safe-area-inset-top, 0px)); }
+.pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)); }
+.px-safe {
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+.p-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+}
+
+/* Shell modale : tient dans l'écran y compris barre de navigation système */
+.modal-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem));
+  overflow: hidden;
+}
+.modal-overlay {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+}

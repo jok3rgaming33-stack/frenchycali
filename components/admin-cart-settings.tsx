@@ -306,25 +306,25 @@ function MeetupSlotPicker({
 }
 
 // ─── Composant principal ───────────────────────────────────────────────────
-export function AdminCartSettings() {
+export function AdminCartSettings({ shop }: { shop?: string }) {
   const [form, setForm] = useState<CartConfig | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getCartConfig().then(setForm).catch(() => setError("Impossible de charger les créneaux."))
-  }, [])
+    getCartConfig(shop).then(setForm).catch(() => setError("Impossible de charger les créneaux."))
+  }, [shop])
 
   const save = async () => {
     if (!form) return
     setSaving(true); setSaved(false); setError(null)
-    const res = await setCartConfig(form)
+    const res = await setCartConfig(form, shop)
     setSaving(false)
     if (!res.ok) { setError(res.error ?? "Erreur."); return }
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
-    getCartConfig().then(setForm).catch(() => {})
+    getCartConfig(shop).then(setForm).catch(() => {})
   }
 
   if (!form) {

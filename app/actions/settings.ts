@@ -38,6 +38,16 @@ export type CartConfig = {
   meetupSlots: MeetupSlot[]
 }
 
+/** Service colis CaliDelivery (Mondial Relay, Chronopost, etc.). */
+export type ParcelService = {
+  id: string
+  name: string
+  /** null ou omit = gratuit */
+  costEur: number | null
+  enabled: boolean
+}
+export type ParcelServicesConfig = { services: ParcelService[] }
+
 const DEFAULT_ORIGIN: MapOrigin = MAP_REGION_DEFAULTS.caliboyz31
 
 const DEFAULT_LOGISTICS: LogisticsContent = {
@@ -69,6 +79,15 @@ const DEFAULT_CART_CONFIG: CartConfig = {
     { id: "m22", label: "22H", hour: 22 },
     { id: "m23", label: "23H", hour: 23 },
     { id: "m00", label: "00H", hour: 0 },
+  ],
+}
+
+const DEFAULT_PARCEL_SERVICES: ParcelServicesConfig = {
+  services: [
+    { id: "mondial_relay", name: "Locker Mondial Relay", costEur: null, enabled: true },
+    { id: "chronopost", name: "Chronopost", costEur: null, enabled: true },
+    { id: "colissimo", name: "Colissimo", costEur: null, enabled: true },
+    { id: "ups", name: "UPS", costEur: null, enabled: true },
   ],
 }
 
@@ -164,11 +183,25 @@ export async function getMapOriginForRegion(region: MapRegion): Promise<MapOrigi
   return all[region] ?? MAP_REGION_DEFAULTS[region]
 }
 
-export async function getCartConfig(): Promise<CartConfig> {
-  return readSetting<CartConfig>("cart_config", DEFAULT_CART_CONFIG)
+/** Clé réglage avec fallback global si une clé boutique `prefix:shop` est absente. */
+async function readSettingWithShopFallback<T extends object>(
+  prefix: string,
+  fallback: T,
+  shop?: string,
+): Promise<T> {
+  if (shop?.trim()) {
+    const shopKey = `${prefix}:${shop.trim()}`
+    const rows = await db.select().from(appSettings).where(eq(appSettings.key, shopKey)).limit(1)
+    if (rows.length > 0) return { ...fallback, ...(rows[0].value as object) } as T
+  }
+  return readSetting<T>(prefix, fallback)
 }
 
-export async function setCartConfig(config: CartConfig) {
+export async function getCartConfig(shop?: string): Promise<CartConfig> {
+  return readSettingWithShopFallback<CartConfig>("cart_config", DEFAULT_CART_CONFIG, shop)
+}
+
+export async function setCartConfig(config: CartConfig, shop?: string) {
   if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
 
   const min = Number(config.minDeliveryAmount)
@@ -196,25 +229,71 @@ export async function setCartConfig(config: CartConfig) {
     }))
     .filter((s) => s.label.length > 0)
 
-  await writeSetting("cart_config", { minDeliveryAmount: min, deliverySlots, meetupSlots })
+  const key = shop?.trim() ? `cart_config:${shop.trim()}` : "cart_config"
+  await writeSetting(key, { minDeliveryAmount: min, deliverySlots, meetupSlots })
   revalidatePath("/")
   revalidatePath("/admin")
   return { ok: true as const }
 }
 
-export async function getLogisticsContent(): Promise<LogisticsContent> {
-  return readSetting<LogisticsContent>("logistics_content", DEFAULT_LOGISTICS)
+export async function getLogisticsContent(shop?: string): Promise<LogisticsContent> {
+  return readSettingWithShopFallback<LogisticsContent>("logistics_content", DEFAULT_LOGISTICS, shop)
 }
 
-export async function setLogisticsContent(content: LogisticsContent) {
+export async function setLogisticsContent(content: LogisticsContent, shop?: string) {
   if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
-  await writeSetting("logistics_content", {
+  const key = shop?.trim() ? `logistics_content:${shop.trim()}` : "logistics_content"
+  await writeSetting(key, {
     deliveryTitle: content.deliveryTitle?.trim() || DEFAULT_LOGISTICS.deliveryTitle,
     deliveryBody: content.deliveryBody?.trim() || DEFAULT_LOGISTICS.deliveryBody,
     meetupTitle: content.meetupTitle?.trim() || DEFAULT_LOGISTICS.meetupTitle,
     meetupBody: content.meetupBody?.trim() || DEFAULT_LOGISTICS.meetupBody,
     note: content.note?.trim() || "",
   })
+  revalidatePath("/")
+  revalidatePath("/admin")
+  return { ok: true as const }
+}
+
+function normalizeParcelServices(raw: ParcelService[] | undefined): ParcelService[] {
+  const list = Array.isArray(raw) ? raw : []
+  return list
+    .map((s, i) => {
+      const id = (s.id ?? "").trim() || `svc_${i}_${Date.now()}`
+      const name = (s.name ?? "").trim()
+      let costEur: number | null = null
+      if (s.costEur != null) {
+        const n = Number(s.costEur)
+        costEur = Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null
+      }
+      return { id, name, costEur, enabled: s.enabled !== false }
+    })
+    .filter((s) => s.name.length > 0)
+}
+
+/** Tous les services colis (CaliDelivery), y compris désactivés. */
+export async function getParcelServices(): Promise<ParcelService[]> {
+  const cfg = await readSetting<ParcelServicesConfig>("parcel_services", DEFAULT_PARCEL_SERVICES)
+  const services = normalizeParcelServices(cfg.services)
+  return services.length > 0 ? services : DEFAULT_PARCEL_SERVICES.services
+}
+
+/** Services colis activés uniquement. */
+export async function getEnabledParcelServices(): Promise<ParcelService[]> {
+  const all = await getParcelServices()
+  return all.filter((s) => s.enabled)
+}
+
+export async function setParcelServices(services: ParcelService[]) {
+  if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
+  const normalized = normalizeParcelServices(services)
+  if (normalized.length === 0) return { ok: false as const, error: "Ajoute au moins un service." }
+  const ids = new Set<string>()
+  for (const s of normalized) {
+    if (ids.has(s.id)) return { ok: false as const, error: `Identifiant en double : ${s.id}` }
+    ids.add(s.id)
+  }
+  await writeSetting("parcel_services", { services: normalized })
   revalidatePath("/")
   revalidatePath("/admin")
   return { ok: true as const }

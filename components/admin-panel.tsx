@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import type { OrderThread } from "@/lib/db/schema"
 import type { AdminUserRow } from "@/app/actions/account"
 import type { VerificationRow } from "@/app/actions/verification"
@@ -19,6 +19,7 @@ import { AdminPromos } from "@/components/admin-promos"
 import { AdminLogistics } from "@/components/admin-logistics"
 import { AdminCartSettings } from "@/components/admin-cart-settings"
 import { AdminCryptoSettings } from "@/components/admin-crypto-settings"
+import { AdminParcelSettings } from "@/components/admin-parcel-settings"
 import { AdminLoginLogs } from "@/components/admin-login-logs"
 import type { LoginLogRow } from "@/app/actions/login-logs"
 import { AdminNotifications } from "@/components/admin-notifications"
@@ -28,37 +29,53 @@ import { getAdminBadgeCounts } from "@/app/actions/messaging"
 import { AdminAppBadgeSync } from "@/components/app-badge-sync"
 import { MessageSquare, Map, ListOrdered, Users, LogOut, Eye, Newspaper, Package, Ticket, ShieldCheck, UserCog, Truck, Inbox, Activity, Bell, CheckCheck, KeyRound, ChevronDown, Wallet } from "lucide-react"
 import { PushToggle } from "@/components/push-toggle"
+import { isDeliveryShop, shopLabel, type ShopId, SHOP_LABELS } from "@/lib/shops"
 
 const CLIENT_SHOPS = [
-  { href: "/caliboyz31?preview=1", label: "Cali Boyz 31", hint: "Interface gold 31" },
-  { href: "/caliboyz94?preview=1", label: "Cali Boyz 94", hint: "Interface gold 94" },
-  { href: "/calidelivery?preview=1", label: "CaliDelivery", hint: "Interface néon delivery" },
+  { key: "caliboyz31" as const, href: "/caliboyz31?preview=1", label: SHOP_LABELS.caliboyz31, hint: "Interface gold 31" },
+  { key: "caliboyz94" as const, href: "/caliboyz94?preview=1", label: SHOP_LABELS.caliboyz94, hint: "Interface gold IDF" },
+  { key: "calidelivery" as const, href: "/calidelivery?preview=1", label: SHOP_LABELS.calidelivery, hint: "Interface néon delivery" },
 ] as const
 
 type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "carte" | "commandes" | "utilisateurs" | "verifications" | "recuperations" | "produits" | "promos" | "logistique" | "crypto" | "news" | "admins" | "connexions" | "notifications" | "staff"
 
-const TABS: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
-  { id: "commandes-en-cours", label: "Commandes en cours", icon: Inbox },
-  { id: "locker", label: "Locker MR", icon: Package },
-  { id: "cloturees", label: "Clôturées", icon: CheckCheck },
-  { id: "messagerie", label: "Messagerie", icon: MessageSquare },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "produits", label: "Produits", icon: Package },
-  { id: "promos", label: "Codes promo", icon: Ticket },
-  { id: "carte", label: "Carte interactive", icon: Map },
-  { id: "logistique", label: "Logistique", icon: Truck },
-  { id: "crypto", label: "Paiements crypto", icon: Wallet },
-  { id: "commandes", label: "Récap commandes", icon: ListOrdered },
-  { id: "utilisateurs", label: "Utilisateurs", icon: Users },
-  { id: "verifications", label: "Vérifications", icon: ShieldCheck },
-  { id: "recuperations", label: "Récupérations", icon: KeyRound },
-  { id: "connexions", label: "Connexions", icon: Activity },
-  { id: "news", label: "News", icon: Newspaper },
-  { id: "staff", label: "Whitelist", icon: Users },
-  { id: "admins", label: "Admins", icon: UserCog },
-]
+function buildTabs(shop: ShopId): { id: TabId; label: string; icon: typeof MessageSquare }[] {
+  const delivery = isDeliveryShop(shop)
+  const tabs: { id: TabId; label: string; icon: typeof MessageSquare }[] = []
+  if (!delivery) {
+    tabs.push({ id: "commandes-en-cours", label: "Commandes en cours", icon: Inbox })
+  }
+  if (delivery) {
+    tabs.push({ id: "locker", label: "Colis", icon: Package })
+  }
+  tabs.push(
+    { id: "cloturees", label: "Clôturées", icon: CheckCheck },
+    { id: "messagerie", label: "Messagerie", icon: MessageSquare },
+    { id: "notifications", label: "Notifications", icon: Bell },
+    { id: "produits", label: "Produits", icon: Package },
+    { id: "promos", label: "Codes promo", icon: Ticket },
+    { id: "carte", label: "Carte interactive", icon: Map },
+    { id: "logistique", label: "Logistique", icon: Truck },
+  )
+  if (delivery) {
+    tabs.push({ id: "crypto", label: "Paiements crypto", icon: Wallet })
+  }
+  tabs.push(
+    { id: "commandes", label: "Récap commandes", icon: ListOrdered },
+    { id: "utilisateurs", label: "Utilisateurs", icon: Users },
+    { id: "verifications", label: "Vérifications", icon: ShieldCheck },
+    { id: "recuperations", label: "Récupérations", icon: KeyRound },
+    { id: "connexions", label: "Connexions", icon: Activity },
+    { id: "news", label: "News", icon: Newspaper },
+    { id: "staff", label: "Whitelist", icon: Users },
+    { id: "admins", label: "Admins", icon: UserCog },
+  )
+  return tabs
+}
 
 export function AdminPanel({
+  shop,
+  adminPseudo,
   initialActiveOrders,
   initialLockerOrders,
   initialDiscussions,
@@ -70,6 +87,8 @@ export function AdminPanel({
   initialPastOrders,
   initialStaff,
 }: {
+  shop: ShopId
+  adminPseudo?: string
   initialActiveOrders: OrderThread[]
   initialLockerOrders: OrderThread[]
   initialDiscussions: OrderThread[]
@@ -81,7 +100,9 @@ export function AdminPanel({
   initialNotificationsHistory: BroadcastNotificationRow[]
   initialStaff: StaffRow[]
 }) {
-  const [tab, setTab] = useState<TabId>("commandes-en-cours")
+  const tabs = useMemo(() => buildTabs(shop), [shop])
+  const defaultTab: TabId = isDeliveryShop(shop) ? "locker" : "commandes-en-cours"
+  const [tab, setTab] = useState<TabId>(defaultTab)
   const [focusThreadId, setFocusThreadId] = useState<number | null>(null)
   const [vueClientOpen, setVueClientOpen] = useState(false)
   const [vueClientBusy, setVueClientBusy] = useState(false)
@@ -95,12 +116,14 @@ export function AdminPanel({
     total: 0,
   })
 
-  // Deep-link : /admin?tab=messagerie&thread=123 (depuis Récupérations)
+  const previewShops = CLIENT_SHOPS.filter((s) => s.key === shop)
+
+  // Deep-link : /admin/[shop]?tab=messagerie&thread=123
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const t = params.get("tab") as TabId | null
-    if (t && TABS.some((x) => x.id === t)) setTab(t)
+    if (t && tabs.some((x) => x.id === t)) setTab(t)
     const thread = params.get("thread")
     if (thread && /^\d+$/.test(thread)) {
       setFocusThreadId(Number(thread))
@@ -112,7 +135,7 @@ export function AdminPanel({
       url.searchParams.delete("thread")
       window.history.replaceState({}, "", url.pathname)
     }
-  }, [])
+  }, [tabs])
 
   const openClientPreview = async (href: string) => {
     setVueClientBusy(true)
@@ -138,12 +161,12 @@ export function AdminPanel({
 
   const refreshBadges = useCallback(async () => {
     try {
-      const c = await getAdminBadgeCounts()
+      const c = await getAdminBadgeCounts(shop)
       setBadges(c)
     } catch {
       /* silencieux */
     }
-  }, [])
+  }, [shop])
 
   useEffect(() => {
     refreshBadges()
@@ -158,7 +181,6 @@ export function AdminPanel({
     }
   }, [refreshBadges])
 
-  // Pastille rouge par onglet
   const tabBadge = (id: TabId): number => {
     switch (id) {
       case "commandes-en-cours":
@@ -176,16 +198,19 @@ export function AdminPanel({
     }
   }
 
+  const label = shopLabel(shop)
+
   return (
-    <div className="admin-panel-root min-h-screen bg-background text-foreground">
+    <div className="admin-panel-root min-h-screen bg-background text-foreground pb-safe">
       <AdminAppBadgeSync total={badges.total} />
-      {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:gap-4 sm:px-6">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold sm:text-xl">Panel Administrateur</h1>
+            <h1 className="text-lg font-bold sm:text-xl">Panel — {label}</h1>
             <p className="text-xs text-muted-foreground">
-              Connecté en tant que Heisenberg
+              {adminPseudo ? `Connecté : ${adminPseudo}` : "Administrateur"}
+              <span className="mx-1.5 text-border">·</span>
+              Boutique indépendante
               {badges.total > 0 && (
                 <span className="ml-2 inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
                   {badges.total > 9 ? "9+" : badges.total} en attente
@@ -215,9 +240,9 @@ export function AdminPanel({
                   />
                   <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
                     <p className="border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
-                      Aperçu live des 3 interfaces (sans page login)
+                      Aperçu live de {label}
                     </p>
-                    {CLIENT_SHOPS.map((s) => (
+                    {previewShops.map((s) => (
                       <button
                         key={s.href}
                         type="button"
@@ -250,19 +275,16 @@ export function AdminPanel({
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {/* Activation des notifications push vendeur (nouvelles commandes + messages clients) */}
         <div className="mb-6 flex flex-col gap-2 rounded-2xl border border-border bg-card p-4 sm:max-w-md">
           <p className="text-sm font-medium">Notifications vendeur</p>
           <p className="text-xs text-muted-foreground">
-            Sois alerté des nouvelles commandes et des nouveaux messages clients, même panel fermé.
-            Active aussi le badge rouge sur l&apos;icône de l&apos;app.
+            Alertes commandes / messages pour {label}, même panel fermé.
           </p>
           <PushToggle role="vendeur" className="mt-1" />
         </div>
 
-        {/* Tabs — wrap mobile + desktop, labels complets */}
         <nav className="mb-6 flex flex-wrap gap-1.5 sm:gap-2" aria-label="Sections admin">
-          {TABS.map(({ id, label, icon: Icon }) => {
+          {tabs.map(({ id, label: tabLabel, icon: Icon }) => {
             const count = tabBadge(id)
             return (
               <button
@@ -276,7 +298,7 @@ export function AdminPanel({
                 }`}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden="true" />
-                <span className="whitespace-nowrap">{label}</span>
+                <span className="whitespace-nowrap">{tabLabel}</span>
                 {count > 0 && (
                   <span
                     className={`ml-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none ${
@@ -292,11 +314,13 @@ export function AdminPanel({
           })}
         </nav>
 
-        {/* Content */}
         {tab === "commandes-en-cours" ? (
           <VendorInbox initialThreads={initialActiveOrders} mode="orders" />
         ) : tab === "locker" ? (
-          <VendorInbox initialThreads={initialLockerOrders} mode="locker" />
+          <div className="space-y-8">
+            <AdminParcelSettings />
+            <VendorInbox initialThreads={initialLockerOrders} mode="locker" />
+          </div>
         ) : tab === "cloturees" ? (
           <VendorInbox initialThreads={initialPastOrders} mode="past" />
         ) : tab === "messagerie" ? (
@@ -316,11 +340,11 @@ export function AdminPanel({
         ) : tab === "promos" ? (
           <AdminPromos />
         ) : tab === "carte" ? (
-          <AdminMap threads={initialThreads} />
+          <AdminMap threads={initialThreads} lockedRegion={shop} />
         ) : tab === "logistique" ? (
           <div className="space-y-8">
-            <AdminCartSettings />
-            <AdminLogistics />
+            {!isDeliveryShop(shop) && <AdminCartSettings shop={shop} />}
+            <AdminLogistics shop={shop} />
           </div>
         ) : tab === "crypto" ? (
           <AdminCryptoSettings />
@@ -331,7 +355,7 @@ export function AdminPanel({
         ) : tab === "staff" ? (
           <AdminStaff initialStaff={initialStaff} />
         ) : tab === "admins" ? (
-          <AdminAdmins />
+          <AdminAdmins shop={shop} />
         ) : null}
       </div>
     </div>

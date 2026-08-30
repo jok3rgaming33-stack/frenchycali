@@ -1,12 +1,8 @@
-import { isAdminAuthenticated } from "@/app/actions/admin-auth"
-import { getThreads, getActiveOrders, getLockerOrders, getDiscussions, getPastOrders } from "@/app/actions/messaging"
-import { listUsers } from "@/app/actions/account"
-import { listVerifications } from "@/app/actions/verification"
-import { listLoginLogs } from "@/app/actions/login-logs"
-import { listBroadcastNotifications } from "@/app/actions/notifications"
-import { listStaff } from "@/app/actions/staff"
+import Link from "next/link"
+import { redirect } from "next/navigation"
+import { getAdminSession } from "@/app/actions/admin-auth"
 import { AdminGate } from "@/components/admin-gate"
-import { AdminPanel } from "@/components/admin-panel"
+import { SHOP_IDS, SHOP_LABELS, type ShopId } from "@/lib/shops"
 
 export const dynamic = "force-dynamic"
 
@@ -15,79 +11,65 @@ export const metadata = {
   robots: { index: false, follow: false },
 }
 
-export default async function AdminPage() {
-  const authed = await isAdminAuthenticated()
+const HINTS: Record<ShopId, string> = {
+  caliboyz31: "Meet-up & livraison locale — Toulouse",
+  caliboyz94: "Meet-up & livraison locale — Île-de-France",
+  calidelivery: "Colis (Mondial Relay, Chronopost, Colissimo, UPS) + crypto",
+}
 
-  if (!authed) {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ needsShop?: string }>
+}) {
+  const session = await getAdminSession()
+  const params = searchParams ? await searchParams : undefined
+  const needsShopQuery = params?.needsShop === "1"
+
+  if (!session) {
     return <AdminGate />
   }
 
-  const empty = {
-    activeOrders: [] as Awaited<ReturnType<typeof getActiveOrders>>,
-    lockerOrders: [] as Awaited<ReturnType<typeof getLockerOrders>>,
-    discussions: [] as Awaited<ReturnType<typeof getDiscussions>>,
-    threads: [] as Awaited<ReturnType<typeof getThreads>>,
-    pastOrders: [] as Awaited<ReturnType<typeof getPastOrders>>,
-    usersList: [] as Awaited<ReturnType<typeof listUsers>>,
-    verifications: [] as Awaited<ReturnType<typeof listVerifications>>,
-    loginLogs: [] as Awaited<ReturnType<typeof listLoginLogs>>,
-    notifHistory: [] as Awaited<ReturnType<typeof listBroadcastNotifications>>,
-    staffList: [] as Awaited<ReturnType<typeof listStaff>>,
+  if (session.needsShopAssignment || needsShopQuery) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
+        <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center">
+          <h1 className="text-2xl font-bold">Boutique non assignée</h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Ton compte admin n&apos;est pas encore rattaché à une boutique (LaCentral 31, LaCentral IDF
+            ou CaliDelivery). Demande au super-admin d&apos;assigner ta boutique, puis reconnecte-toi.
+          </p>
+        </div>
+      </div>
+    )
   }
 
-  let data = empty
-  try {
-    const [
-      activeOrders,
-      lockerOrders,
-      discussions,
-      threads,
-      pastOrders,
-      usersList,
-      verifications,
-      loginLogs,
-      notifHistory,
-      staffList,
-    ] = await Promise.all([
-      getActiveOrders(),
-      getLockerOrders(),
-      getDiscussions(),
-      getThreads(),
-      getPastOrders(),
-      listUsers(),
-      listVerifications(),
-      listLoginLogs(200),
-      listBroadcastNotifications(50),
-      listStaff(),
-    ])
-    data = {
-      activeOrders,
-      lockerOrders,
-      discussions,
-      threads,
-      pastOrders,
-      usersList,
-      verifications,
-      loginLogs,
-      notifHistory,
-      staffList,
-    }
-  } catch {
-    /* DB vide / non migrée — panel charge à vide */
+  if (session.shop !== "all") {
+    redirect(`/admin/${session.shop}`)
   }
 
   return (
-    <AdminPanel
-      initialActiveOrders={data.activeOrders}
-      initialLockerOrders={data.lockerOrders}
-      initialDiscussions={data.discussions}
-      initialThreads={data.threads}
-      initialPastOrders={data.pastOrders}
-      initialUsers={data.usersList}
-      initialVerifications={data.verifications}
-      initialLoginLogs={data.loginLogs}
-      initialNotificationsHistory={data.notifHistory}
-      initialStaff={data.staffList}
-    />
+    <div className="flex min-h-screen items-center justify-center bg-background px-6 py-10 text-foreground">
+      <div className="w-full max-w-2xl">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold">Panels indépendants</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Super-admin : choisis le panel à ouvrir. Chaque boutique est gérée séparément.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {SHOP_IDS.map((id) => (
+            <Link
+              key={id}
+              href={`/admin/${id}`}
+              className="rounded-2xl border border-border bg-card p-5 transition-colors hover:border-accent hover:bg-accent/5"
+            >
+              <div className="text-lg font-semibold">{SHOP_LABELS[id]}</div>
+              <p className="mt-2 text-xs text-muted-foreground">{HINTS[id]}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }

@@ -7,14 +7,28 @@ import { adminAccounts } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { verifyTurnstile } from "@/lib/turnstile"
 import { verifyPassword } from "@/lib/admin-password"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
+import { isShopId, type ShopId, SHOP_LABELS } from "@/lib/shops"
 
 const COOKIE_NAME = "admin_session"
 const ADMIN_PSEUDO = "Heisenberg"
+
+export type AdminShopScope = ShopId | "all"
+
+export type AdminSession = {
+  token: string
+  pseudo: string
+  /** Boutique gérée, ou "all" pour le super-admin env. */
+  shop: AdminShopScope
+  /** true si compte DB sans shop rattaché (bloqué jusqu'à assignation). */
+  needsShopAssignment: boolean
+}
 
 // Vérifie un token : super-admin (env) ou compte admin actif en base.
 export async function isAdminToken(token: string) {
   if (!token) return false
   if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) return true
+  await ensureOrderThreadsColumns()
   const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.token, token)).limit(1)
   return rows.length > 0 && rows[0].active
 }
@@ -32,26 +46,85 @@ async function setSessionCookie(value: string) {
   })
 }
 
+function sessionFromAdminRow(admin: typeof adminAccounts.$inferSelect): AdminSession {
+  const shop = isShopId(admin.shop) ? admin.shop : null
+  return {
+    token: admin.token,
+    pseudo: admin.pseudo,
+    shop: shop ?? "all",
+    needsShopAssignment: !shop,
+  }
+}
+
+/** Session admin courante (null si non connecté). */
+export async function getAdminSession(): Promise<AdminSession | null> {
+  const store = await cookies()
+  const session = store.get(COOKIE_NAME)?.value
+  if (!session) return null
+  if (process.env.ADMIN_TOKEN && session === process.env.ADMIN_TOKEN) {
+    return {
+      token: session,
+      pseudo: ADMIN_PSEUDO,
+      shop: "all",
+      needsShopAssignment: false,
+    }
+  }
+  await ensureOrderThreadsColumns()
+  const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.token, session)).limit(1)
+  const admin = rows[0]
+  if (!admin || !admin.active) return null
+  return sessionFromAdminRow(admin)
+}
+
+/** Vérifie que la session peut gérer cette boutique. */
+export async function assertAdminCanAccessShop(shop: ShopId): Promise<AdminSession | null> {
+  const session = await getAdminSession()
+  if (!session || session.needsShopAssignment) return null
+  if (session.shop === "all") return session
+  if (session.shop === shop) return session
+  return null
+}
+
 // Connexion par token : super-admin (env) ou compte admin actif.
-export async function adminLogin(token: string): Promise<{ ok: boolean; pseudo?: string; error?: string }> {
+export async function adminLogin(token: string): Promise<{
+  ok: boolean
+  pseudo?: string
+  shop?: AdminShopScope
+  needsShopAssignment?: boolean
+  error?: string
+}> {
   if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) {
     await setSessionCookie(token)
-    return { ok: true, pseudo: ADMIN_PSEUDO }
+    return { ok: true, pseudo: ADMIN_PSEUDO, shop: "all", needsShopAssignment: false }
   }
+  await ensureOrderThreadsColumns()
   const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.token, token)).limit(1)
   const admin = rows[0]
   if (!admin || !admin.active) return { ok: false, error: "Token invalide ou accès révoqué." }
   await setSessionCookie(admin.token)
-  return { ok: true, pseudo: admin.pseudo }
+  const s = sessionFromAdminRow(admin)
+  return {
+    ok: true,
+    pseudo: s.pseudo,
+    shop: s.shop,
+    needsShopAssignment: s.needsShopAssignment,
+  }
 }
 
 // Connexion par pseudo + mot de passe (comptes admin disposant d'un mot de passe).
 export async function adminLoginWithPassword(
   pseudo: string,
   password: string,
-): Promise<{ ok: boolean; pseudo?: string; error?: string }> {
+): Promise<{
+  ok: boolean
+  pseudo?: string
+  shop?: AdminShopScope
+  needsShopAssignment?: boolean
+  error?: string
+}> {
   const p = pseudo?.trim()
   if (!p || !password) return { ok: false, error: "Identifiants requis." }
+  await ensureOrderThreadsColumns()
   const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.pseudo, p)).limit(1)
   const admin = rows[0]
   if (!admin || !admin.active) return { ok: false, error: "Identifiants invalides ou accès révoqué." }
@@ -59,17 +132,18 @@ export async function adminLoginWithPassword(
     return { ok: false, error: "Identifiants invalides." }
   }
   await setSessionCookie(admin.token)
-  return { ok: true, pseudo: admin.pseudo }
+  const s = sessionFromAdminRow(admin)
+  return {
+    ok: true,
+    pseudo: s.pseudo,
+    shop: s.shop,
+    needsShopAssignment: s.needsShopAssignment,
+  }
 }
 
 // Lu côté serveur (panel admin) pour vérifier la session.
 export async function isAdminAuthenticated() {
-  const store = await cookies()
-  const session = store.get(COOKIE_NAME)?.value
-  if (!session) return false
-  if (process.env.ADMIN_TOKEN && session === process.env.ADMIN_TOKEN) return true
-  const rows = await db.select().from(adminAccounts).where(eq(adminAccounts.token, session)).limit(1)
-  return rows.length > 0 && rows[0].active
+  return !!(await getAdminSession())
 }
 
 export async function adminLogout() {
@@ -105,6 +179,19 @@ export async function startAdminClientPreview(): Promise<
   return { ok: true, token: PREVIEW_TOKEN, pseudo: PREVIEW_PSEUDO }
 }
 
+function redirectAfterLogin(res: {
+  shop?: AdminShopScope
+  needsShopAssignment?: boolean
+}) {
+  if (res.needsShopAssignment) {
+    redirect("/admin?needsShop=1")
+  }
+  if (res.shop && res.shop !== "all") {
+    redirect(`/admin/${res.shop}`)
+  }
+  redirect("/admin")
+}
+
 // Action de formulaire pour la porte du panel admin (/admin).
 // Supporte token seul OU pseudo+mot de passe, protégé par Cloudflare Turnstile.
 export async function adminGateAction(_prevState: { error?: string } | null, formData: FormData) {
@@ -118,5 +205,7 @@ export async function adminGateAction(_prevState: { error?: string } | null, for
 
   const res = password ? await adminLoginWithPassword(pseudo, password) : await adminLogin(token)
   if (!res.ok) return { error: res.error ?? "Identifiants invalides." }
-  redirect("/admin")
+  redirectAfterLogin(res)
 }
+
+export { SHOP_LABELS }

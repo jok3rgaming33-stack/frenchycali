@@ -247,12 +247,12 @@ export function HowItWorksModal({ isOpen, onClose, requireRead = false, onConfir
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-background/85 p-3 backdrop-blur-sm"
+      className="modal-overlay fixed inset-0 z-[110] flex items-center justify-center bg-background/85 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Comment ça marche"
     >
-      <div className="flex h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+      <div className="modal-shell w-full max-w-2xl rounded-3xl border border-border bg-card shadow-2xl">
 
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-5">
