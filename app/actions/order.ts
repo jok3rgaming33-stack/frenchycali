@@ -11,7 +11,7 @@ import { computeLoyaltyPoints } from "@/lib/loyalty"
 import { statusMeta, statusThreadMessage } from "@/lib/order-status"
 import { ensureRatingsSchema } from "@/app/actions/ratings"
 import { buildRatingInviteMessage } from "@/lib/order-items"
-import { createCryptoInvoiceForOrder } from "@/app/actions/crypto-payment"
+import { createCryptoInvoiceForOrder, getCryptoGatewayStatus } from "@/app/actions/crypto-payment"
 import { getEnabledParcelServices, getParcelServices } from "@/app/actions/settings"
 import {
   LOCAL_FULFILLMENTS,
@@ -40,6 +40,8 @@ export type PlaceOrderInput = {
   /** Frais livraison société (distance) ou service colis — 0 pour meetup / gratuit */
   deliveryFee?: number
   shop: "caliboyz31" | "caliboyz94" | "calidelivery"
+  /** Code crypto NOWPayments choisi au panier (CaliDelivery). */
+  payCurrency?: string
 }
 
 /**
@@ -319,7 +321,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     await notifyVendor({
       title: `Nouvelle commande ${shop}`,
       body: `${customerName} — ${total}€ — ${parcelName || fulfillment}${parcelMode ? " COLIS" : ""}`,
-      url: `/admin`,
+      url: `/admin/${shop}`,
       tag: "new-order",
     })
   } catch {
@@ -331,30 +333,44 @@ async function placeOrderInner(input: PlaceOrderInput) {
     enabled: boolean
     invoiceUrl?: string
     paymentStatus?: string
+    payCurrency?: string
+    payAddress?: string | null
+    payAmount?: string | null
     error?: string
   } = { enabled: false }
 
   if (allowsCryptoCheckout(shop)) {
-    try {
-      const inv = await createCryptoInvoiceForOrder({
-        threadId: thread.id,
-        totalEur: total,
-        customerToken,
-        customerName: customerName || "Client",
-        shop,
-      })
-      if (inv.ok) {
-        cryptoPayment = {
-          enabled: true,
-          invoiceUrl: inv.invoiceUrl,
-          paymentStatus: inv.paymentStatus,
-        }
-      } else if (!inv.skipped) {
-        cryptoPayment = { enabled: false, error: inv.error }
-        console.error("[placeOrder] crypto invoice skipped:", inv.error)
+    const gateway = await getCryptoGatewayStatus()
+    if (gateway.enabled) {
+      const payCurrency = input.payCurrency?.trim().toLowerCase()
+      if (!payCurrency) {
+        return { ok: false as const, error: "Choisis une crypto pour régler ta commande." }
       }
-    } catch (e) {
-      console.error("[placeOrder] crypto invoice error:", e)
+      try {
+        const inv = await createCryptoInvoiceForOrder({
+          threadId: thread.id,
+          totalEur: total,
+          customerToken,
+          customerName: customerName || "Client",
+          shop,
+          payCurrency,
+        })
+        if (inv.ok) {
+          cryptoPayment = {
+            enabled: true,
+            invoiceUrl: inv.invoiceUrl,
+            paymentStatus: inv.paymentStatus,
+            payCurrency: inv.payCurrency,
+            payAddress: inv.payAddress,
+            payAmount: inv.payAmount,
+          }
+        } else if (!inv.skipped) {
+          cryptoPayment = { enabled: false, error: inv.error }
+          console.error("[placeOrder] crypto invoice skipped:", inv.error)
+        }
+      } catch (e) {
+        console.error("[placeOrder] crypto invoice error:", e)
+      }
     }
   }
 

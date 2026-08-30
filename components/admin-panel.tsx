@@ -41,10 +41,9 @@ type TabId = "commandes-en-cours" | "locker" | "cloturees" | "messagerie" | "car
 
 function buildTabs(shop: ShopId): { id: TabId; label: string; icon: typeof MessageSquare }[] {
   const delivery = isDeliveryShop(shop)
-  const tabs: { id: TabId; label: string; icon: typeof MessageSquare }[] = []
-  if (!delivery) {
-    tabs.push({ id: "commandes-en-cours", label: "Commandes en cours", icon: Inbox })
-  }
+  const tabs: { id: TabId; label: string; icon: typeof MessageSquare }[] = [
+    { id: "commandes-en-cours", label: "Commandes en cours", icon: Inbox },
+  ]
   if (delivery) {
     tabs.push({ id: "locker", label: "Colis", icon: Package })
   }
@@ -101,8 +100,7 @@ export function AdminPanel({
   initialStaff: StaffRow[]
 }) {
   const tabs = useMemo(() => buildTabs(shop), [shop])
-  const defaultTab: TabId = isDeliveryShop(shop) ? "locker" : "commandes-en-cours"
-  const [tab, setTab] = useState<TabId>(defaultTab)
+  const [tab, setTab] = useState<TabId>("commandes-en-cours")
   const [focusThreadId, setFocusThreadId] = useState<number | null>(null)
   const [vueClientOpen, setVueClientOpen] = useState(false)
   const [vueClientBusy, setVueClientBusy] = useState(false)
@@ -184,9 +182,8 @@ export function AdminPanel({
   const tabBadge = (id: TabId): number => {
     switch (id) {
       case "commandes-en-cours":
-        return badges.orders
-      case "locker":
-        return badges.locker
+        // Delivery : pastille colis sur « Commandes en cours »
+        return isDeliveryShop(shop) ? badges.locker : badges.orders
       case "messagerie":
         return badges.messaging
       case "verifications":
@@ -315,11 +312,17 @@ export function AdminPanel({
         </nav>
 
         {tab === "commandes-en-cours" ? (
-          <VendorInbox initialThreads={initialActiveOrders} mode="orders" />
+          <VendorInbox
+            initialThreads={isDeliveryShop(shop) ? initialLockerOrders : initialActiveOrders}
+            mode={isDeliveryShop(shop) ? "locker" : "orders"}
+          />
         ) : tab === "locker" ? (
           <div className="space-y-8">
             <AdminParcelSettings />
-            <VendorInbox initialThreads={initialLockerOrders} mode="locker" />
+            <p className="text-sm text-muted-foreground">
+              Configure ici les transporteurs proposés au checkout. Les commandes colis actives
+              sont dans l&apos;onglet <strong>Commandes en cours</strong>.
+            </p>
           </div>
         ) : tab === "cloturees" ? (
           <VendorInbox initialThreads={initialPastOrders} mode="past" />

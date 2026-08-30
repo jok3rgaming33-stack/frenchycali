@@ -12,10 +12,25 @@ import { buildRatingInviteMessage } from "@/lib/order-items"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import { isParcelFulfillment, isShopId, type ShopId } from "@/lib/shops"
 
-/** Filtre SQL boutique — ignore les threads sans shop (legacy) sauf pour super-admin (shop undefined). */
+/**
+ * Filtre SQL boutique.
+ * Inclut aussi les commandes legacy sans colonne `shop` si le tag [shop] est dans le summary,
+ * et pour CaliDelivery les colis sans shop (anciennes commandes locker).
+ */
 function shopEq(shop?: ShopId | null): SQL | undefined {
   if (!shop) return undefined
-  return eq(orderThreads.shop, shop)
+  const tagged = sql`${orderThreads.summary} ~* ${`\\[${shop}\\]`}`
+  if (shop === "calidelivery") {
+    return or(
+      eq(orderThreads.shop, shop),
+      and(isNull(orderThreads.shop), tagged),
+      and(
+        isNull(orderThreads.shop),
+        notInArray(orderThreads.fulfillment, ["meetup", "livraison"]),
+      ),
+    )
+  }
+  return or(eq(orderThreads.shop, shop), and(isNull(orderThreads.shop), tagged))
 }
 
 export type NewOrderInput = {
@@ -191,16 +206,27 @@ export async function getThreads(shop?: ShopId) {
 // Statuts réservés à la Messagerie — exclus de toutes les vues Commandes
 const DISCUSSION_STATUSES = ["discussion", "pris_en_charge", "ouvert", "ferme"] as const
 
-/** Commandes locales actives (meetup / livraison main) — hors colis. */
+/**
+ * Commandes actives pour un panel boutique.
+ * - LaCentral 31/IDF : meetup + livraison main
+ * - CaliDelivery : commandes colis (hors meetup/livraison)
+ */
 export async function getActiveOrders(shop?: ShopId) {
   await ensureOrderThreadsColumns()
+  const fulfillmentFilter =
+    shop === "calidelivery"
+      ? notInArray(orderThreads.fulfillment, ["meetup", "livraison"])
+      : shop
+        ? inArray(orderThreads.fulfillment, ["meetup", "livraison"])
+        : undefined
+
   const threads = await db
     .select()
     .from(orderThreads)
     .where(
       and(
         notInArray(orderThreads.status, ["livree", "annulee", "notification", ...DISCUSSION_STATUSES]),
-        inArray(orderThreads.fulfillment, ["meetup", "livraison"]),
+        fulfillmentFilter,
         shopEq(shop),
       )
     )

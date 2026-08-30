@@ -21,6 +21,11 @@ import {
   type ParcelService,
 } from "@/app/actions/settings"
 import {
+  getCryptoGatewayStatus,
+  getEnabledCryptoCurrencies,
+  type CryptoCurrencyOption,
+} from "@/app/actions/crypto-payment"
+import {
   allowsCryptoCheckout,
   isDeliveryShop as shopIsDelivery,
   isLocalShop,
@@ -170,6 +175,11 @@ export function CheckoutCart({
   )
   const isParcel = isDeliveryShop && !!selectedParcel
 
+  const [cryptoList, setCryptoList] = useState<CryptoCurrencyOption[]>([])
+  const [cryptoGatewayOn, setCryptoGatewayOn] = useState(false)
+  const [payCurrency, setPayCurrency] = useState("")
+  const needsCrypto = cryptoOk && cryptoGatewayOn
+
   const [address, setAddress] = useState("")
   const [parcelAddress, setParcelAddress] = useState("")
   const [date, setDate] = useState("")
@@ -180,7 +190,15 @@ export function CheckoutCart({
   const [done, setDone] = useState<{
     trackingToken: string
     threadId: number
-    cryptoPayment?: { enabled: boolean; invoiceUrl?: string; paymentStatus?: string; error?: string }
+    cryptoPayment?: {
+      enabled: boolean
+      invoiceUrl?: string
+      paymentStatus?: string
+      payCurrency?: string
+      payAddress?: string | null
+      payAmount?: string | null
+      error?: string
+    }
   } | null>(null)
   const [error, setError] = useState("")
 
@@ -208,6 +226,23 @@ export function CheckoutCart({
       })
       .catch(() => setParcelServices([]))
   }, [isDeliveryShop])
+
+  useEffect(() => {
+    if (!cryptoOk) return
+    Promise.all([getCryptoGatewayStatus(), getEnabledCryptoCurrencies()])
+      .then(([st, list]) => {
+        setCryptoGatewayOn(!!st.enabled)
+        setCryptoList(list)
+        setPayCurrency((prev) => {
+          if (prev && list.some((c) => c.code === prev)) return prev
+          return list[0]?.code ?? ""
+        })
+      })
+      .catch(() => {
+        setCryptoGatewayOn(false)
+        setCryptoList([])
+      })
+  }, [cryptoOk])
 
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0)
   const deliveryAllowed = subtotal >= config.minDeliveryAmount
@@ -301,6 +336,7 @@ export function CheckoutCart({
   const canValidate =
     cart.length > 0 &&
     !!fulfillment &&
+    (!needsCrypto || !!payCurrency) &&
     (isParcel
       ? !!parcelAddress.trim()
       : !!date &&
@@ -310,6 +346,10 @@ export function CheckoutCart({
 
   const handleOrder = async () => {
     if (!canValidate || placing) return
+    if (needsCrypto && !payCurrency) {
+      setError("Choisis une crypto pour régler ta commande.")
+      return
+    }
     setError("")
     setPlacing(true)
     const payload = {
@@ -335,6 +375,7 @@ export function CheckoutCart({
       promoCode: promoCode || undefined,
       deliveryFee,
       shop,
+      payCurrency: needsCrypto ? payCurrency : undefined,
     }
     try {
       let res: Awaited<ReturnType<typeof placeOrder>> | null = null
@@ -387,37 +428,51 @@ export function CheckoutCart({
             Suivi : {done.trackingToken}
           </p>
 
-          {payUrl && (
+          {done.cryptoPayment?.enabled && (
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}12`, textAlign: "left" }}>
               <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: accentColor, fontFamily: "Orbitron,sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                Paiement multi-crypto
+                Paiement {done.cryptoPayment.payCurrency?.toUpperCase() || "CRYPTO"}
               </p>
-              <p style={{ margin: "0 0 12px", fontSize: 12, color: textMuted, lineHeight: 1.5 }}>
-                Choisis ta crypto (BTC, ETH, XMR, USDT…) et paie en toute sécurité. Le statut se met à jour automatiquement.
-              </p>
-              <a
-                href={payUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  boxSizing: "border-box",
-                  textAlign: "center",
-                  padding: "14px 16px",
-                  borderRadius: 999,
-                  background: `linear-gradient(120deg,${accentColor},${primaryColor})`,
-                  color: isDeliveryShop ? "#000814" : "#0f0d07",
-                  fontWeight: 800,
-                  fontSize: 13,
-                  textDecoration: "none",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Payer en crypto
-              </a>
+              {done.cryptoPayment.payAmount && (
+                <p style={{ margin: "0 0 8px", fontSize: 12, color: textMuted }}>
+                  Montant : <strong style={{ color: textMain }}>{done.cryptoPayment.payAmount} {done.cryptoPayment.payCurrency?.toUpperCase()}</strong>
+                </p>
+              )}
+              {done.cryptoPayment.payAddress && (
+                <p style={{ margin: "0 0 12px", fontSize: 11, color: textMuted, wordBreak: "break-all" }}>
+                  Adresse : {done.cryptoPayment.payAddress}
+                </p>
+              )}
+              {payUrl && (
+                <a
+                  href={payUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    textAlign: "center",
+                    padding: "14px 16px",
+                    borderRadius: 999,
+                    background: `linear-gradient(120deg,${accentColor},${primaryColor})`,
+                    color: isDeliveryShop ? "#000814" : "#0f0d07",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    textDecoration: "none",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Ouvrir le paiement
+                </a>
+              )}
             </div>
+          )}
+          {done.cryptoPayment?.error && (
+            <p style={{ margin: "0 0 16px", fontSize: 12, color: "#f87171" }}>
+              Paiement crypto : {done.cryptoPayment.error}
+            </p>
           )}
 
           <button
@@ -674,6 +729,37 @@ export function CheckoutCart({
           <Calendar style={{ width: 16, height: 16, color: accentColor, flexShrink: 0 }} />
           <p style={{ margin: 0, fontSize: 13, color: textMain }}>
             Expédition après validation du paiement — délai selon le transporteur choisi.
+          </p>
+        </div>
+      )}
+
+      {/* Choix crypto obligatoire (CaliDelivery + gateway actif) */}
+      {needsCrypto && (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted }}>
+            Crypto de paiement
+          </p>
+          {cryptoList.length === 0 ? (
+            <p style={{ fontSize: 12, color: "#f87171" }}>
+              Aucune crypto activée. Contacte le vendeur ou réessaie plus tard.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              {cryptoList.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setPayCurrency(c.code)}
+                  style={{ ...chip(payCurrency === c.code), minWidth: 0, flexDirection: "column", gap: 2 }}
+                >
+                  <span style={{ fontWeight: 800, letterSpacing: "0.04em" }}>{c.code.toUpperCase()}</span>
+                  <span style={{ fontSize: 10, opacity: 0.8 }}>{c.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <p style={{ margin: "8px 0 0", fontSize: 11, color: textMuted }}>
+            Paiement via NOWPayments — tu recevras l&apos;adresse / le lien après validation.
           </p>
         </div>
       )}
