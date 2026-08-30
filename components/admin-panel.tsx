@@ -201,6 +201,7 @@ export function AdminPanel({
   const label = shopLabel(shop)
 
   return (
+    <>
     <div className="admin-panel-root min-h-screen bg-background text-foreground pb-safe">
       <AdminAppBadgeSync total={badges.total} />
       <header className="border-b border-border bg-card">
@@ -227,47 +228,18 @@ export function AdminPanel({
             </p>
           </div>
           <div className="relative flex shrink-0 flex-wrap items-center gap-2">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setVueClientOpen((v) => !v)}
-                disabled={vueClientBusy}
-                className="flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm"
-              >
-                <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="whitespace-nowrap">{vueClientBusy ? "Ouverture…" : "Vue Client"}</span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-              </button>
-              {vueClientOpen && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Fermer le menu"
-                    className="fixed inset-0 z-40 cursor-default bg-transparent"
-                    onClick={() => setVueClientOpen(false)}
-                  />
-                  <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-                    <p className="border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
-                      Aperçu live de {label}
-                    </p>
-                    {previewShops.map((s) => (
-                      <button
-                        key={s.href}
-                        type="button"
-                        disabled={vueClientBusy}
-                        onClick={() => openClientPreview(s.href)}
-                        className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2.5 text-left text-sm transition-colors last:border-0 hover:bg-secondary"
-                      >
-                        <span className="font-medium text-foreground">{s.label}</span>
-                        <span className="text-[11px] text-muted-foreground">{s.hint}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setVueClientOpen((v) => !v)}
+              disabled={vueClientBusy}
+              className="flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-60 sm:gap-2 sm:px-4 sm:text-sm"
+            >
+              <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="whitespace-nowrap">{vueClientBusy ? "Ouverture…" : "Vue Client"}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
+            </button>
             {vueClientError && (
-              <span className="hidden max-w-[160px] text-[11px] text-red-400 sm:inline">{vueClientError}</span>
+              <span className="max-w-[140px] truncate text-[11px] text-red-400 sm:max-w-[160px]">{vueClientError}</span>
             )}
             <form action={adminLogout}>
               <button
@@ -378,5 +350,55 @@ export function AdminPanel({
         ) : null}
       </div>
     </div>
+
+    {/* Modale Vue Client — hors .admin-panel-root (overflow-x: clip) pour rester visible sur mobile */}
+    {vueClientOpen && (
+      <div
+        className="modal-overlay fixed inset-0 z-[200] flex items-end justify-center bg-background/90 sm:items-center"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Vue Client"
+      >
+        <button
+          type="button"
+          aria-label="Fermer"
+          className="absolute inset-0 cursor-default"
+          onClick={() => setVueClientOpen(false)}
+        />
+        <div className="modal-shell relative z-[201] w-full max-w-md rounded-t-3xl border border-accent/40 bg-card shadow-2xl sm:rounded-3xl">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2 className="text-base font-bold">Vue Client</h2>
+              <p className="text-xs text-muted-foreground">Aperçu live — {label}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVueClientOpen(false)}
+              className="rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-secondary"
+            >
+              Fermer
+            </button>
+          </div>
+          <div className="space-y-2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {previewShops.map((s) => (
+              <button
+                key={s.href}
+                type="button"
+                disabled={vueClientBusy}
+                onClick={() => openClientPreview(s.href)}
+                className="flex w-full flex-col items-start gap-0.5 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left transition-colors hover:border-accent hover:bg-accent/5 disabled:opacity-50"
+              >
+                <span className="font-semibold text-foreground">{s.label}</span>
+                <span className="text-[11px] text-muted-foreground">{s.hint}</span>
+              </button>
+            ))}
+            {vueClientError && (
+              <p className="px-1 text-xs text-red-400">{vueClientError}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
