@@ -874,7 +874,7 @@ export function ShopPage({ shop, initialProducts }: Props) {
       <MessagerieModal isOpen={msgOpen} onClose={() => setMsgOpen(false)} userData={userData} />
       <MyOrdersModal isOpen={ordersOpen} onClose={() => setOrdersOpen(false)} userData={userData} />
       <LoyaltyModal isOpen={loyaltyOpen} onClose={() => setLoyaltyOpen(false)} userData={userData} />
-      <HowItWorksModal isOpen={howOpen} onClose={() => setHowOpen(false)} />
+      <HowItWorksModal isOpen={howOpen} onClose={() => setHowOpen(false)} shop={shop} />
       <DeliveryInfoModal isOpen={deliveryOpen} onClose={() => setDeliveryOpen(false)} />
       <UserDashboardModal isOpen={dashOpen} onClose={() => setDashOpen(false)} userData={userData} onLogout={logout} />
       {userToken ? <NewsPopup token={userToken} /> : null}

@@ -185,6 +185,23 @@ async function placeOrderInner(input: PlaceOrderInput) {
     await ensureRatingsSchema()
   } catch { /* schema best-effort */ }
 
+  // Résoudre la devise AVANT le récap (CaliDelivery) pour l'afficher dans le summary
+  let selectedPayCurrency: string | undefined
+  let walletAddress: string | null = null
+  if (allowsCryptoCheckout(shop)) {
+    const payCurrency = input.payCurrency?.trim().toLowerCase()
+    if (!payCurrency) {
+      return { ok: false as const, error: "Choisis une devise pour régler ta commande." }
+    }
+    const enabled = await getEnabledCryptoCurrencies()
+    const allowed = enabled.some((c) => c.code === payCurrency || c.id === payCurrency)
+    if (!allowed) {
+      return { ok: false as const, error: "Cette devise n'est pas disponible." }
+    }
+    selectedPayCurrency = payCurrency
+    walletAddress = await getCryptoWalletAddress(payCurrency)
+  }
+
   const feeLabel =
     deliveryFee > 0 ? ` (frais ${deliveryFee}€)` : deliveryFee === 0 && parcelMode ? " (gratuit)" : ""
 
@@ -198,9 +215,6 @@ async function placeOrderInner(input: PlaceOrderInput) {
           }`
 
   const feeSummaryLabel = parcelMode ? parcelName || "Envoi colis" : "Livraison"
-  const payCurrencyEarly = allowsCryptoCheckout(shop)
-    ? input.payCurrency?.trim().toLowerCase() || null
-    : null
 
   const summary = [
     `Nouvelle commande [${shop}] — ${customerName}`,
@@ -209,7 +223,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
     ``,
     !parcelMode && scheduledDate ? `Date : ${scheduledDate}` : null,
     modeLabel,
-    payCurrencyEarly ? `Paiement : ${payCurrencyEarly.toUpperCase()}` : null,
+    selectedPayCurrency ? `Paiement : ${selectedPayCurrency.toUpperCase()}` : null,
     promoCodeUsed && discount > 0 ? `Code ${promoCodeUsed} : -${discount}€` : null,
     ``,
     `Sous-total : ${subtotal}€`,
@@ -291,24 +305,12 @@ async function placeOrderInner(input: PlaceOrderInput) {
     /* push optionnel */
   }
 
-  // CaliDelivery : devise choisie par le client (portefeuille autonome — pas de gateway)
-  let selectedPayCurrency: string | undefined
-  if (allowsCryptoCheckout(shop)) {
-    const payCurrency = input.payCurrency?.trim().toLowerCase()
-    if (!payCurrency) {
-      return { ok: false as const, error: "Choisis une devise pour régler ta commande." }
-    }
-    const enabled = await getEnabledCryptoCurrencies()
-    const allowed = enabled.some((c) => c.code === payCurrency)
-    if (!allowed) {
-      return { ok: false as const, error: "Cette devise n'est pas disponible." }
-    }
-    selectedPayCurrency = payCurrency
-    const walletAddress = await getCryptoWalletAddress(payCurrency)
+  // CaliDelivery : message wallet + persistance devise (déjà résolue plus haut)
+  if (selectedPayCurrency) {
     try {
       await db.execute(sql`
         UPDATE order_threads SET
-          payment_crypto = ${payCurrency},
+          payment_crypto = ${selectedPayCurrency},
           payment_status = 'awaiting',
           payment_amount_eur = ${Math.round(total)},
           xmr_wallet = ${walletAddress},
@@ -319,7 +321,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
       console.error("[placeOrder] persist pay currency:", e)
     }
     try {
-      const code = payCurrency.toUpperCase()
+      const code = selectedPayCurrency.toUpperCase()
       const bodyLines = walletAddress
         ? [
             `Voici l'adresse de notre wallet ${code}`,
@@ -333,7 +335,7 @@ async function placeOrderInner(input: PlaceOrderInput) {
         : [
             `Voici l'adresse de notre wallet ${code}`,
             ``,
-            `(Adresse pas encore renseignée — le vendeur va te la communiquer ici.)`,
+            `(Adresse pas encore renseignée dans l'admin Devises — le vendeur va te la communiquer ici.)`,
             ``,
             `Total à régler : ${total}€`,
           ]

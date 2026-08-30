@@ -109,17 +109,8 @@ export function LoginPage({ onSuccess, shop }: Props) {
 
   const createAnonymousAccess = async () => {
     if (creating) return
-    // Gate : lecture obligatoire de « Comment ça marche » avant création
-    try {
-      if (localStorage.getItem(HOW_IT_WORKS_KEY) !== "1") {
-        setHowOpen(true)
-        return
-      }
-    } catch {
-      setHowOpen(true)
-      return
-    }
-    await runCreateAccount()
+    // Toujours afficher « Comment ça marche » (lecture obligatoire) avant création
+    setHowOpen(true)
   }
 
   const runCreateAccount = async () => {
@@ -668,6 +659,7 @@ export function LoginPage({ onSuccess, shop }: Props) {
         onClose={() => setHowOpen(false)}
         requireRead
         onConfirm={onHowItWorksConfirmed}
+        shop={shop}
       />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>

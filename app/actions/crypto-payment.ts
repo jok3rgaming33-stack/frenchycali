@@ -88,12 +88,17 @@ function normalizeCurrencies(raw: unknown): CryptoCurrencyOption[] {
   return out
 }
 
-/** Adresse wallet admin pour une devise (null si absente / désactivée). */
+/** Adresse wallet admin pour une devise (null si absente). */
 export async function getCryptoWalletAddress(code: string): Promise<string | null> {
   const c = (code ?? "").trim().toLowerCase()
   if (!c) return null
   const all = await getCryptoCurrencies()
-  const found = all.find((x) => x.code === c && x.enabled)
+  const found =
+    all.find((x) => x.enabled && x.code === c) ||
+    all.find((x) => x.enabled && x.id === c) ||
+    all.find((x) => x.enabled && x.name.toLowerCase().includes(c)) ||
+    all.find((x) => x.code === c) ||
+    all.find((x) => x.id === c)
   const addr = found?.address?.trim()
   return addr || null
 }
@@ -139,8 +144,20 @@ export async function setCryptoGatewayEnabled(enabled: boolean) {
 export async function getCryptoCurrencies(): Promise<CryptoCurrencyOption[]> {
   try {
     const rows = await db.select().from(appSettings).where(eq(appSettings.key, CURRENCIES_KEY)).limit(1)
-    const services = normalizeCurrencies((rows[0]?.value as { currencies?: unknown } | undefined)?.currencies)
-    return services.length > 0 ? services : DEFAULT_CURRENCIES
+    const raw = rows[0]?.value as { currencies?: unknown } | unknown[] | undefined
+    const list = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object" && "currencies" in raw
+        ? (raw as { currencies?: unknown }).currencies
+        : undefined
+    const services = normalizeCurrencies(list)
+    if (services.length === 0) return DEFAULT_CURRENCIES
+    // Fusionne avec les défauts pour ne pas perdre une entrée connue
+    const byCode = new Map(services.map((s) => [s.code, s]))
+    for (const d of DEFAULT_CURRENCIES) {
+      if (!byCode.has(d.code)) byCode.set(d.code, d)
+    }
+    return Array.from(byCode.values())
   } catch {
     return DEFAULT_CURRENCIES
   }
