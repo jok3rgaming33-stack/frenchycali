@@ -416,7 +416,7 @@ export async function resolveClientLogin(
   token: string
 } | { ok: false }> {
   const t = token?.trim()
-  if (!t || t.length < 20) return { ok: false }
+  if (!t || t.length < 9) return { ok: false }
 
   // 1) Compte users classique
   let userRows = await db.select().from(users).where(eq(users.token, t)).limit(1)

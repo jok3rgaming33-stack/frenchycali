@@ -147,7 +147,7 @@ export function LoginPage({ onSuccess, shop }: Props) {
 
   const loginWithKey = async () => {
     const token = loginInput.trim()
-    if (token.length < 30) { setError("Clé secrète trop courte."); return }
+    if (token.length < 9) { setError("Clé secrète trop courte."); return }
     if (loggingIn) return
     setError(""); setBioError(""); setLoggingIn(true)
     try {
