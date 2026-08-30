@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/messaging"
 import type { OrderThread, ThreadMessage } from "@/lib/db/schema"
 import { statusMeta, getParcelClientActions } from "@/lib/order-status"
+import { threadShopLabel } from "@/lib/shops"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 
@@ -465,7 +466,9 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {orders
           .filter((o) => o.status !== "trk_token" && o.total > 0)
-          .map((order) => (
+          .map((order) => {
+            const pageLabel = threadShopLabel(order)
+            return (
             <button
               key={order.id}
               type="button"
@@ -503,12 +506,16 @@ export function OrderTracker({ customerToken, onBack, accentColor, cardBorder }:
                 </span>
               </div>
               <div style={{ display: "flex", gap: 16, fontSize: 12, color: textMuted, flexWrap: "wrap" }}>
+                {pageLabel ? (
+                  <span style={{ color: accentColor, fontWeight: 700 }}>{pageLabel}</span>
+                ) : null}
                 <span style={{ color: accentColor, fontWeight: 700 }}>{order.total}€</span>
                 <span>{order.fulfillment}</span>
                 <span>{new Date(order.createdAt).toLocaleDateString("fr-FR")}</span>
               </div>
             </button>
-          ))}
+            )
+          })}
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>

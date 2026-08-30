@@ -15,6 +15,7 @@ import {
   reportParcelIssue,
 } from "@/app/actions/messaging"
 import { statusMeta, isClosedStatus, getParcelClientActions, normalizeStatus } from "@/lib/order-status"
+import { threadShopLabel } from "@/lib/shops"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 import { BlobMedia } from "@/components/blob-media"
@@ -609,6 +610,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                         {list.map((t) => {
                           const meta = statusMeta(t.status)
                           const isTrk = isTrkMessage(t)
+                          const pageLabel = threadShopLabel(t)
                           return (
                             <li key={t.id}>
                               <button
@@ -629,6 +631,7 @@ export function MyOrdersModal({ isOpen, onClose, userData }: MyOrdersModalProps)
                                     <>
                                       <div className="font-semibold text-sm">Commande #{t.id}</div>
                                       <div className="text-xs text-muted-foreground">
+                                        {pageLabel ? `${pageLabel} · ` : ""}
                                         {formatThreadActivity(threadActivityAt(t))} · {t.total}€
                                       </div>
                                     </>

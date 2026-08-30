@@ -18,6 +18,17 @@ export function shopLabel(shop: string | null | undefined): string {
   return shop?.trim() || "Boutique"
 }
 
+/** Label boutique pour une commande / un fil (colonne shop, sinon tag [shop] du summary). */
+export function threadShopLabel(thread: {
+  shop?: string | null
+  summary?: string | null
+}): string {
+  if (isShopId(thread.shop)) return SHOP_LABELS[thread.shop]
+  const fromSummary = shopFromSummary(thread.summary)
+  if (fromSummary) return SHOP_LABELS[fromSummary]
+  return ""
+}
+
 /** Modes de récupération « locaux » (31 / IDF). */
 export const LOCAL_FULFILLMENTS = ["meetup", "livraison"] as const
 export type LocalFulfillment = (typeof LOCAL_FULFILLMENTS)[number]

@@ -11,6 +11,7 @@ import {
   markThreadRead,
 } from "@/app/actions/messaging"
 import { statusMeta, isDiscussionStatus } from "@/lib/order-status"
+import { threadShopLabel } from "@/lib/shops"
 import { MessageBody } from "@/components/message-body"
 import { RateProductsModal } from "@/components/rate-products-modal"
 import {
@@ -54,6 +55,7 @@ type Thread = {
   total: number
   fulfillment: string
   status: string
+  shop?: string | null
   createdAt: Date | string
   updatedAt: Date | string
 }
@@ -338,6 +340,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                         </li>
                       ) : orderThreads.map((t) => {
                         const meta = statusMeta(t.status)
+                        const pageLabel = threadShopLabel(t)
                         return (
                           <li key={t.id}>
                             <button
@@ -352,6 +355,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                                 <div>
                                   <div className="font-semibold">{`Commande #${t.id}`}</div>
                                   <div className="text-xs text-muted-foreground">
+                                    {pageLabel ? `${pageLabel} · ` : ""}
                                     {formatThreadActivity(threadActivityAt(t))}
                                   </div>
                                 </div>
@@ -375,6 +379,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                         </li>
                       ) : discussionThreads.map((t) => {
                         const meta = statusMeta(t.status)
+                        const pageLabel = threadShopLabel(t)
                         return (
                           <li key={t.id}>
                             <button
@@ -389,6 +394,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
                                 <div>
                                   <div className="font-semibold">Discussion #{t.id}</div>
                                   <div className="text-xs text-muted-foreground">
+                                    {pageLabel ? `${pageLabel} · ` : ""}
                                     {formatThreadActivity(threadActivityAt(t))}
                                   </div>
                                 </div>

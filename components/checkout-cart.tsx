@@ -399,7 +399,7 @@ export function CheckoutCart({
 
   if (done) {
     return (
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px", textAlign: "center" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "40px 16px", textAlign: "center" }} className="shop-main-pad">
         <div style={{ borderRadius: 24, border: `1px solid ${cardBorder}`, background: "rgba(20,18,12,.92)", padding: "40px 24px" }}>
           <CheckCircle2 style={{ width: 56, height: 56, color: "#4ade80", margin: "0 auto 16px" }} />
           <h2 style={{ margin: "0 0 8px", fontFamily: "Orbitron,sans-serif", fontSize: 20, fontWeight: 900, color: textMain }}>
@@ -411,20 +411,40 @@ export function CheckoutCart({
               : "Tu peux suivre ta commande et écrire au vendeur depuis Mes commandes."}
           </p>
           <p style={{ margin: "0 0 16px", fontSize: 11, color: "rgba(200,190,170,.5)", wordBreak: "break-all" }}>
-            Suivi : {done.trackingToken}
+            Réf. commande #{done.threadId} · Suivi : {done.trackingToken}
           </p>
 
           {done.payCurrency && (
-            <div style={{ marginBottom: 20, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}12`, textAlign: "left" }}>
+            <div style={{ marginBottom: 16, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}12`, textAlign: "left" }}>
               <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: accentColor, fontFamily: "Orbitron,sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>
                 Devise choisie : {done.payCurrency.toUpperCase()}
               </p>
               <p style={{ margin: 0, fontSize: 12, color: textMuted, lineHeight: 1.5 }}>
-                Le vendeur te communiquera les instructions de paiement (adresse / montant) dans la messagerie.
-                Tu règles depuis ton propre portefeuille.
+                Ouvre Mes commandes pour voir l&apos;adresse wallet et le bouton « J&apos;ai fait le virement ».
               </p>
             </div>
           )}
+
+          {/* Notice importante : refresh session si UI pas à jour */}
+          <div
+            role="note"
+            style={{
+              marginBottom: 20,
+              padding: "14px 16px",
+              borderRadius: 16,
+              border: "1px solid rgba(251,191,36,.45)",
+              background: "rgba(251,191,36,.1)",
+              textAlign: "left",
+            }}
+          >
+            <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: "#fbbf24", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              Important
+            </p>
+            <p style={{ margin: 0, fontSize: 12, color: textMain, lineHeight: 1.55 }}>
+              Si tu ne vois pas ta commande, les boutons (virement / réception) ou les messages à jour :
+              déconnecte-toi puis reconnecte-toi. Ça rafraîchit ta session et affiche correctement Mes commandes.
+            </p>
+          </div>
 
           <button
             type="button"
