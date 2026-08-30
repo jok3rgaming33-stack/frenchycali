@@ -684,31 +684,33 @@ export function CheckoutCart({
         </div>
       )}
 
-      {/* Choix devise obligatoire (CaliDelivery) — portefeuille autonome, pas de gateway */}
+      {/* Choix crypto — même modèle d'affichage que les modes de récupération */}
       {needsCrypto && (
-        <div style={{ marginBottom: 16, padding: 16, borderRadius: 16, border: `1px solid ${accentColor}55`, background: `${accentColor}10` }}>
-          <p style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: accentColor, fontWeight: 800 }}>
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: textMuted }}>
             Devise de paiement
-          </p>
-          <p style={{ margin: "0 0 12px", fontSize: 12, color: textMuted, lineHeight: 1.45 }}>
-            Choisis la crypto avec laquelle tu souhaites régler. Tu paieras depuis ton propre portefeuille ;
-            le vendeur t&apos;enverra les instructions dans la messagerie.
           </p>
           {cryptoList.length === 0 ? (
             <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>
               Aucune devise activée pour le moment. Réessaie plus tard.
             </p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {cryptoList.map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setPayCurrency(c.code)}
-                  style={{ ...chip(payCurrency === c.code), minWidth: 0, flexDirection: "column", gap: 2 }}
+                  style={{
+                    ...chip(payCurrency === c.code),
+                    flex: "1 1 120px",
+                    minWidth: 110,
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
                 >
-                  <span style={{ fontWeight: 800, letterSpacing: "0.04em" }}>{c.code.toUpperCase()}</span>
-                  <span style={{ fontSize: 10, opacity: 0.8 }}>{c.name}</span>
+                  <span style={{ fontWeight: 800, letterSpacing: "0.06em" }}>{c.code.toUpperCase()}</span>
+                  <span style={{ fontSize: 10, opacity: 0.75 }}>{c.name}</span>
                 </button>
               ))}
             </div>
