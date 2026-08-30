@@ -32,7 +32,13 @@ function formatDate(d: Date | string) {
   })
 }
 
-export function AdminLoginLogs({ initialLogs }: { initialLogs: LoginLogRow[] }) {
+export function AdminLoginLogs({
+  shop,
+  initialLogs,
+}: {
+  shop: import("@/lib/shops").ShopId
+  initialLogs: LoginLogRow[]
+}) {
   const [logs, setLogs] = useState<LoginLogRow[]>(initialLogs)
   const [search, setSearch] = useState("")
   const [refreshing, setRefreshing] = useState(false)
@@ -53,7 +59,7 @@ export function AdminLoginLogs({ initialLogs }: { initialLogs: LoginLogRow[] }) 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      const fresh = await listLoginLogs(200)
+      const fresh = await listLoginLogs(shop, 200)
       setLogs(fresh)
     } finally {
       setRefreshing(false)

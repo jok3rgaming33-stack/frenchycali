@@ -1,13 +1,16 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { userVerifications, users } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { userVerifications, users, orderThreads } from "@/lib/db/schema"
+import { eq, sql } from "drizzle-orm"
 import { del } from "@vercel/blob"
 import { revalidatePath } from "next/cache"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 import { notifyVendor } from "@/lib/push"
 import { createGeneralInquiryThread, addMessage } from "@/app/actions/messaging"
+import { orderThreadShopEq } from "@/lib/shop-scope"
+import type { ShopId } from "@/lib/shops"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import {
   getMyRecoveryStatus,
   markRecoveryKycSubmitted,
@@ -119,9 +122,12 @@ export type VerificationRow = {
   recoveryClaimId?: number | null
 }
 
-// Liste des vérifications (réservé admin).
-export async function listVerifications(): Promise<VerificationRow[]> {
+// Liste des vérifications (réservé admin) — compartimentée par boutique.
+export async function listVerifications(shop: ShopId): Promise<VerificationRow[]> {
   if (!(await isAdminAuthenticated())) return []
+  await ensureOrderThreadsColumns()
+  const shopCond = orderThreadShopEq(shop)
+
   const rows = await db
     .select({
       id: userVerifications.id,
@@ -135,11 +141,19 @@ export async function listVerifications(): Promise<VerificationRow[]> {
       createdAt: userVerifications.createdAt,
     })
     .from(userVerifications)
+    .where(
+      sql`${userVerifications.userToken} IN (
+        SELECT DISTINCT ${orderThreads.customerToken}
+        FROM ${orderThreads}
+        WHERE ${orderThreads.customerToken} IS NOT NULL
+          AND (${shopCond})
+      )`,
+    )
     .orderBy(userVerifications.createdAt)
 
-  // Enrichir avec dossiers récupération
+  // Enrichir avec dossiers récupération de CETTE boutique
   const { listRecoveryClaims } = await import("@/app/actions/lost-key")
-  const claims = await listRecoveryClaims().catch(() => [])
+  const claims = await listRecoveryClaims(shop).catch(() => [])
   const byToken = new Map(
     claims
       .filter((c) => c.status === "pending_kyc" || c.status === "kyc_submitted")
@@ -185,17 +199,23 @@ export async function validateAndPurge(id: number) {
 
   // Si récupération de compte : tenter la fusion auto
   try {
-    const { listRecoveryClaims, approveRecoveryClaim } = await import("@/app/actions/lost-key")
-    const claims = await listRecoveryClaims()
-    const claim = claims.find(
-      (c) =>
-        c.provisionalToken === row.userToken &&
-        (c.status === "kyc_submitted" || c.status === "pending_kyc"),
-    )
+    const { approveRecoveryClaim } = await import("@/app/actions/lost-key")
+    const { accountRecoveryClaims } = await import("@/lib/db/schema")
+    const { and: and2, eq: eq2, inArray: inArray2 } = await import("drizzle-orm")
+    const claims = await db
+      .select()
+      .from(accountRecoveryClaims)
+      .where(
+        and2(
+          eq2(accountRecoveryClaims.provisionalToken, row.userToken),
+          inArray2(accountRecoveryClaims.status, ["kyc_submitted", "pending_kyc"]),
+        ),
+      )
+      .limit(1)
+    const claim = claims[0]
     if (claim) {
       const merge = await approveRecoveryClaim(claim.id, claim.originalUserId)
       if (!merge.ok) {
-        // KYC validé mais fusion manuelle requise — on laisse le dossier ouvert
         console.log("[recovery] merge deferred:", merge.error)
       }
     }
@@ -227,17 +247,40 @@ export async function rejectVerification(id: number, justification: string) {
 
   // Si récupération : reset claim en pending_kyc (peut resoumettre) sauf refus global
   try {
-    const { listRecoveryClaims } = await import("@/app/actions/lost-key")
-    const { db: dbi } = await import("@/lib/db")
     const { accountRecoveryClaims } = await import("@/lib/db/schema")
-    const { eq: eq2 } = await import("drizzle-orm")
-    const claims = await listRecoveryClaims()
-    const claim = claims.find((c) => c.provisionalToken === row.userToken)
-    if (claim && claim.status !== "rejected" && claim.status !== "approved") {
-      await dbi
-        .update(accountRecoveryClaims)
-        .set({ status: "pending_kyc" })
-        .where(eq2(accountRecoveryClaims.id, claim.id))
+    const { and: and2, eq: eq2, notInArray: notIn2 } = await import("drizzle-orm")
+    await db
+      .update(accountRecoveryClaims)
+      .set({ status: "pending_kyc" })
+      .where(
+        and2(
+          eq2(accountRecoveryClaims.provisionalToken, row.userToken),
+          notIn2(accountRecoveryClaims.status, ["rejected", "approved"]),
+        ),
+      )
+  } catch {
+    /* ignore */
+  }
+
+  // Boutique du client (pour taguer le fil de refus)
+  let inferShop: ShopId | undefined
+  try {
+    const { shopFromSummary, isShopId: checkShop } = await import("@/lib/shops")
+    const thr = await db
+      .select({ shop: orderThreads.shop, summary: orderThreads.summary })
+      .from(orderThreads)
+      .where(eq(orderThreads.customerToken, row.userToken))
+      .limit(10)
+    for (const t of thr) {
+      if (checkShop(t.shop)) {
+        inferShop = t.shop
+        break
+      }
+      const fromSum = shopFromSummary(t.summary)
+      if (fromSum) {
+        inferShop = fromSum
+        break
+      }
     }
   } catch {
     /* ignore */
@@ -254,6 +297,7 @@ export async function rejectVerification(id: number, justification: string) {
     customerName: pseudo,
     customerToken: row.userToken,
     message: `Refus de vérification — ${pseudo}`,
+    shop: inferShop,
   })
 
   if (thread.ok && thread.id) {

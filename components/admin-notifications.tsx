@@ -12,6 +12,7 @@ import type { BroadcastNotificationRow } from "@/app/actions/notifications"
 import type { AdminUserRow } from "@/app/actions/account"
 
 type Props = {
+  shop: import("@/lib/shops").ShopId
   initialHistory: BroadcastNotificationRow[]
   users: AdminUserRow[]
 }
@@ -19,7 +20,7 @@ type Props = {
 type RecipientMode = "all" | "select"
 type InnerTab = "send" | "history"
 
-export function AdminNotifications({ initialHistory, users }: Props) {
+export function AdminNotifications({ shop, initialHistory, users }: Props) {
   const [activeTab, setActiveTab] = useState<InnerTab>("send")
   const [history, setHistory] = useState(initialHistory)
 
@@ -120,6 +121,7 @@ export function AdminNotifications({ initialHistory, users }: Props) {
         media,
         imageUrl: media.find((m) => m.type === "image")?.url,
         recipients,
+        shop,
         // Permet à l'action serveur de construire une URL proxy absolue pour le payload push
         appOrigin: window.location.origin,
       })
@@ -133,6 +135,7 @@ export function AdminNotifications({ initialHistory, users }: Props) {
         media,
         recipients: recipientMode === "all" ? "all" : JSON.stringify(Array.from(selectedTokens)),
         sentCount: res.sentCount,
+        shop,
         createdAt: new Date(),
       }
       setHistory(prev => [newEntry, ...prev])

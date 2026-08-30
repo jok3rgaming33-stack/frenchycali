@@ -28,7 +28,13 @@ import {
  * Whitelist : l'admin saisit le pseudo, le serveur génère une clé secrète
  * (≥ 30 car., format accès client) à coller sur l'écran de connexion classique.
  */
-export function AdminStaff({ initialStaff }: { initialStaff: StaffRow[] }) {
+export function AdminStaff({
+  shop,
+  initialStaff,
+}: {
+  shop: import("@/lib/shops").ShopId
+  initialStaff: StaffRow[]
+}) {
   const [staff, setStaff] = useState<StaffRow[]>(initialStaff)
   const [pseudo, setPseudo] = useState("")
   const [busy, setBusy] = useState(false)
@@ -42,7 +48,7 @@ export function AdminStaff({ initialStaff }: { initialStaff: StaffRow[] }) {
   const [copied, setCopied] = useState<"token" | "full" | number | null>(null)
 
   async function refresh() {
-    const rows = await listStaff()
+    const rows = await listStaff(shop)
     setStaff(rows)
   }
 
@@ -53,7 +59,7 @@ export function AdminStaff({ initialStaff }: { initialStaff: StaffRow[] }) {
     setLastIssued(null)
     setBusy(true)
     try {
-      const res = await createWhitelistMember({ pseudo: pseudo.trim() })
+      const res = await createWhitelistMember({ pseudo: pseudo.trim(), shop })
       if (!res.ok) {
         setError(res.error)
         return

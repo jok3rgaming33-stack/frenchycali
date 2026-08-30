@@ -46,6 +46,8 @@ type MessagerieModalProps = {
   isOpen: boolean
   onClose: () => void
   userData: UserData
+  /** Boutique courante — tague les nouvelles discussions. */
+  shop?: import("@/lib/shops").ShopId
 }
 
 type Thread = {
@@ -68,7 +70,7 @@ type Message = {
   createdAt: Date | string
 }
 
-export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalProps) {
+export function MessagerieModal({ isOpen, onClose, userData, shop }: MessagerieModalProps) {
   const token = userData?.token ?? ""
   const name = userData?.pseudo ?? "Client"
   const [threads, setThreads] = useState<Thread[]>([])
@@ -185,6 +187,7 @@ export function MessagerieModal({ isOpen, onClose, userData }: MessagerieModalPr
         customerName: name,
         customerToken: token || undefined,
         message: composeText,
+        shop,
       })
       if (res.ok) {
         setComposeText("")

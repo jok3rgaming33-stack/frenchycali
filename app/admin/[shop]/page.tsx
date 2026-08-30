@@ -77,11 +77,11 @@ export default async function AdminShopPage({
       getDiscussions(shop),
       getThreads(shop),
       getPastOrders(shop),
-      listUsers(),
-      listVerifications(),
-      listLoginLogs(200),
-      listBroadcastNotifications(50),
-      listStaff(),
+      listUsers(shop),
+      listVerifications(shop),
+      listLoginLogs(shop, 200),
+      listBroadcastNotifications(shop, 50),
+      listStaff(shop),
     ])
     data = {
       activeOrders,

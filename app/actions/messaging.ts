@@ -11,26 +11,12 @@ import { adjustStock } from "@/app/actions/products"
 import { buildRatingInviteMessage } from "@/lib/order-items"
 import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 import { isParcelFulfillment, isShopId, type ShopId } from "@/lib/shops"
+import { orderThreadShopEq } from "@/lib/shop-scope"
 
-/**
- * Filtre SQL boutique.
- * Inclut aussi les commandes legacy sans colonne `shop` si le tag [shop] est dans le summary,
- * et pour CaliDelivery les colis sans shop (anciennes commandes locker).
- */
+/** Filtre SQL boutique (délègue à lib/shop-scope). */
 function shopEq(shop?: ShopId | null): SQL | undefined {
   if (!shop) return undefined
-  const tagged = sql`${orderThreads.summary} ~* ${`\\[${shop}\\]`}`
-  if (shop === "calidelivery") {
-    return or(
-      eq(orderThreads.shop, shop),
-      and(isNull(orderThreads.shop), tagged),
-      and(
-        isNull(orderThreads.shop),
-        notInArray(orderThreads.fulfillment, ["meetup", "livraison"]),
-      ),
-    )
-  }
-  return or(eq(orderThreads.shop, shop), and(isNull(orderThreads.shop), tagged))
+  return orderThreadShopEq(shop)
 }
 
 export type NewOrderInput = {
@@ -150,10 +136,16 @@ export async function createGeneralInquiryThread(input: {
   customerName: string
   customerToken?: string
   message: string
+  /** Boutique cible (obligatoire pour le compartimentage admin). */
+  shop?: ShopId
 }) {
   const name = input.customerName?.trim() || "Client"
   const body = input.message?.trim()
   if (!body) return { ok: false as const }
+
+  await ensureOrderThreadsColumns()
+  const shop = input.shop && isShopId(input.shop) ? input.shop : null
+  const summary = shop ? `Discussion générale [${shop}]` : "Discussion générale"
 
   const [thread] = await db
     .insert(orderThreads)
@@ -161,8 +153,9 @@ export async function createGeneralInquiryThread(input: {
       customerName: name,
       customerToken: input.customerToken?.trim() || null,
       trackingToken: `MSG_${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`,
-      summary: "Discussion générale",
+      summary,
       total: 0,
+      shop,
       fulfillment: "livraison",
       status: "discussion",
     })
@@ -170,15 +163,17 @@ export async function createGeneralInquiryThread(input: {
 
   await db.insert(threadMessages).values({ threadId: thread.id, sender: "client", body })
 
+  const adminUrl = shop ? `/admin/${shop}` : "/admin"
   await notifyVendor({
     title: `Message de ${name}`,
     body: body.length > 80 ? `${body.slice(0, 77)}…` : body,
-    url: "/admin",
+    url: adminUrl,
     tag: `thread-${thread.id}`,
   })
 
   revalidatePath("/messagerie")
   revalidatePath("/admin")
+  if (shop) revalidatePath(`/admin/${shop}`)
   return { ok: true as const, id: thread.id }
 }
 
@@ -678,27 +673,21 @@ export async function getAdminBadgeCounts(shop?: ShopId): Promise<{
 
   let verifications = 0
   try {
-    const { userVerifications } = await import("@/lib/db/schema")
-    const [v] = await db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(userVerifications)
-      .where(eq(userVerifications.status, "pending"))
-    verifications = v?.c ?? 0
+    if (shop) {
+      const { listVerifications } = await import("@/app/actions/verification")
+      const rows = await listVerifications(shop)
+      verifications = rows.filter((r) => r.status === "pending").length
+    }
   } catch {
     /* ignore */
   }
 
   let recovery = 0
   try {
-    const rec = await db.execute(sql`
-      SELECT COUNT(*)::int AS c FROM account_recovery_claims
-      WHERE status IN ('pending_kyc', 'kyc_submitted')
-    `)
-    const raw = rec as unknown as { rows?: { c: number }[]; rowCount?: number } | { c: number }[]
-    if (Array.isArray(raw)) {
-      recovery = Number(raw[0]?.c) || 0
-    } else if (raw?.rows) {
-      recovery = Number(raw.rows[0]?.c) || 0
+    if (shop) {
+      const { listRecoveryClaims } = await import("@/app/actions/lost-key")
+      const claims = await listRecoveryClaims(shop)
+      recovery = claims.filter((c) => c.status === "pending_kyc" || c.status === "kyc_submitted").length
     }
   } catch {
     recovery = 0

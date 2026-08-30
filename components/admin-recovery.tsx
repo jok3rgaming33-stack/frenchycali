@@ -34,7 +34,7 @@ function statusLabel(s: string) {
   }
 }
 
-export function AdminRecovery() {
+export function AdminRecovery({ shop }: { shop: import("@/lib/shops").ShopId }) {
   const [rows, setRows] = useState<RecoveryClaimRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -49,7 +49,7 @@ export function AdminRecovery() {
   async function refresh() {
     setLoading(true)
     try {
-      const data = await listRecoveryClaims()
+      const data = await listRecoveryClaims(shop)
       setRows(data)
     } finally {
       setLoading(false)
@@ -58,7 +58,8 @@ export function AdminRecovery() {
 
   useEffect(() => {
     refresh()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shop])
 
   const open = rows.filter((r) => r.status === "pending_kyc" || r.status === "kyc_submitted")
   const closed = rows.filter((r) => r.status === "approved" || r.status === "rejected")
@@ -99,7 +100,7 @@ export function AdminRecovery() {
   async function handleSearch(claimId: number) {
     const q = (searchQ[claimId] || "").trim()
     if (q.length < 2) return
-    const res = await searchUsersByPseudo(q)
+    const res = await searchUsersByPseudo(q, shop)
     setSearchResults((prev) => ({ ...prev, [claimId]: res }))
   }
 

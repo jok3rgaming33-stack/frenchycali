@@ -28,6 +28,8 @@ import {
 import { eq, and, or, isNull, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { isAdminAuthenticated } from "./admin-auth"
+import { isShopId, type ShopId } from "@/lib/shops"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 
 export type StaffRow = {
   id: number
@@ -122,9 +124,14 @@ export async function reattachAccountThreads(token: string, pseudo: string) {
 }
 
 // ─── Admin : lister ───────────────────────────────────────────────────────
-export async function listStaff(): Promise<StaffRow[]> {
+export async function listStaff(shop: ShopId): Promise<StaffRow[]> {
   if (!(await isAdminAuthenticated())) return []
-  const rows = await db.select().from(staffMembers).orderBy(staffMembers.createdAt)
+  await ensureOrderThreadsColumns()
+  const rows = await db
+    .select()
+    .from(staffMembers)
+    .where(eq(staffMembers.shop, shop))
+    .orderBy(staffMembers.createdAt)
   return rows.map((r) => ({
     id: r.id,
     pseudo: r.pseudo,
@@ -138,18 +145,21 @@ export async function listStaff(): Promise<StaffRow[]> {
   }))
 }
 
-export async function listWhitelistMembers() {
-  return listStaff()
+export async function listWhitelistMembers(shop: ShopId) {
+  return listStaff(shop)
 }
 
 // ─── Admin : créer (pseudo seul → token généré) ───────────────────────────
 export async function createWhitelistMember(input: {
   pseudo: string
+  shop: ShopId
 }): Promise<
   | { ok: true; id: number; pseudo: string; customerToken: string; reusedExisting?: boolean }
   | { ok: false; error: string }
 > {
   if (!(await isAdminAuthenticated())) return { ok: false, error: "Non autorisé." }
+  if (!isShopId(input.shop)) return { ok: false, error: "Boutique invalide." }
+  await ensureOrderThreadsColumns()
 
   const pseudo = input.pseudo?.trim()
   if (!pseudo) return { ok: false, error: "Pseudo requis." }
@@ -209,10 +219,12 @@ export async function createWhitelistMember(input: {
       inviteUsed: true,
       active: true,
       customerToken,
+      shop: input.shop,
     })
     .returning({ id: staffMembers.id })
 
   revalidatePath("/admin")
+  revalidatePath(`/admin/${input.shop}`)
   return {
     ok: true,
     id: inserted[0]?.id ?? 0,

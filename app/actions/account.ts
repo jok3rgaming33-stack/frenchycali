@@ -16,6 +16,9 @@ import { getClientIp, isVpnOrProxy } from "@/lib/ip-check"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 import { USER_FLAGS } from "@/lib/user-flags"
 import { recordLogin, deleteLoginLogsByToken } from "@/app/actions/login-logs"
+import { orderThreadShopEq } from "@/lib/shop-scope"
+import type { ShopId } from "@/lib/shops"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 
 // Crée (ou réenregistre) un compte anonyme : associe une clé secrète à un pseudo.
 // Idempotent : si la clé existe déjà, on conserve le pseudo d'origine.
@@ -154,8 +157,15 @@ export type AdminUserRow = {
   mustSetPassword: boolean
 }
 
-// Répertoire de tous les comptes enregistrés, avec nombre de commandes et total dépensé.
-export async function listUsers(): Promise<AdminUserRow[]> {
+/**
+ * Répertoire des comptes pour une boutique.
+ * Un utilisateur n'apparaît que s'il a au moins un fil (commande / discussion)
+ * rattaché à cette boutique. Totaux commandes calculés sur cette boutique uniquement.
+ */
+export async function listUsers(shop: ShopId): Promise<AdminUserRow[]> {
+  if (!(await isAdminAuthenticated())) return []
+  await ensureOrderThreadsColumns()
+  const shopCond = orderThreadShopEq(shop)
   const rows = await db
     .select({
       id: users.id,
@@ -170,8 +180,20 @@ export async function listUsers(): Promise<AdminUserRow[]> {
       totalSpent: sql<number>`coalesce(sum(${orderThreads.total}), 0)::int`,
     })
     .from(users)
-    .leftJoin(orderThreads, eq(orderThreads.customerToken, users.token))
-    .groupBy(users.id, users.pseudo, users.token, users.nickname, users.createdAt, users.loyaltyAdjustment, users.flags, users.mustSetPassword)
+    .innerJoin(
+      orderThreads,
+      and(eq(orderThreads.customerToken, users.token), shopCond),
+    )
+    .groupBy(
+      users.id,
+      users.pseudo,
+      users.token,
+      users.nickname,
+      users.createdAt,
+      users.loyaltyAdjustment,
+      users.flags,
+      users.mustSetPassword,
+    )
     .orderBy(desc(users.createdAt))
   return rows
 }

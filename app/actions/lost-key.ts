@@ -29,6 +29,9 @@ import { revalidatePath } from "next/cache"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
 import { notifyVendor } from "@/lib/push"
 import { del } from "@vercel/blob"
+import { orderThreadShopEq } from "@/lib/shop-scope"
+import type { ShopId } from "@/lib/shops"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 
 export type RecoveryClaimRow = {
   id: number
@@ -259,9 +262,12 @@ export async function markRecoveryKycSubmitted(provisionalToken: string) {
     )
 }
 
-export async function listRecoveryClaims(): Promise<RecoveryClaimRow[]> {
+export async function listRecoveryClaims(shop: ShopId): Promise<RecoveryClaimRow[]> {
   if (!(await isAdminAuthenticated())) return []
   await ensureRecoverySchema()
+  await ensureOrderThreadsColumns()
+  const shopCond = orderThreadShopEq(shop)
+
   const rows = await db
     .select()
     .from(accountRecoveryClaims)
@@ -270,6 +276,43 @@ export async function listRecoveryClaims(): Promise<RecoveryClaimRow[]> {
 
   const result: RecoveryClaimRow[] = []
   for (const r of rows) {
+    // Compartimentage : le claim appartient à la boutique si le fil lié
+    // ou le compte d'origine / provisoire a des commandes sur cette boutique.
+    let belongs = false
+    if (r.threadId) {
+      const [th] = await db
+        .select({ id: orderThreads.id })
+        .from(orderThreads)
+        .where(and(eq(orderThreads.id, r.threadId), shopCond))
+        .limit(1)
+      belongs = !!th
+    }
+    if (!belongs && r.provisionalToken) {
+      const [hit] = await db
+        .select({ id: orderThreads.id })
+        .from(orderThreads)
+        .where(and(eq(orderThreads.customerToken, r.provisionalToken), shopCond))
+        .limit(1)
+      belongs = !!hit
+    }
+    if (!belongs && r.originalUserId) {
+      const orig = await db
+        .select({ token: users.token })
+        .from(users)
+        .where(eq(users.id, r.originalUserId))
+        .limit(1)
+      const tok = orig[0]?.token
+      if (tok) {
+        const [hit] = await db
+          .select({ id: orderThreads.id })
+          .from(orderThreads)
+          .where(and(eq(orderThreads.customerToken, tok), shopCond))
+          .limit(1)
+        belongs = !!hit
+      }
+    }
+    if (!belongs) continue
+
     let originalPseudo: string | null = null
     if (r.originalUserId) {
       const o = await db
@@ -518,15 +561,25 @@ export async function rejectRecoveryClaim(
   return { ok: true }
 }
 
-/** Recherche users par pseudo pour association manuelle admin. */
-export async function searchUsersByPseudo(q: string): Promise<{ id: number; pseudo: string; tokenPreview: string }[]> {
+/** Recherche users par pseudo pour association manuelle admin (boutique uniquement). */
+export async function searchUsersByPseudo(
+  q: string,
+  shop: ShopId,
+): Promise<{ id: number; pseudo: string; tokenPreview: string }[]> {
   if (!(await isAdminAuthenticated())) return []
   const query = q?.trim()
   if (!query || query.length < 2) return []
+  await ensureOrderThreadsColumns()
+  const shopCond = orderThreadShopEq(shop)
   const rows = await db
     .select({ id: users.id, pseudo: users.pseudo, token: users.token, flags: users.flags })
     .from(users)
+    .innerJoin(
+      orderThreads,
+      and(eq(orderThreads.customerToken, users.token), shopCond),
+    )
     .where(sql`${users.pseudo} ILIKE ${"%" + query + "%"}`)
+    .groupBy(users.id, users.pseudo, users.token, users.flags)
     .limit(20)
   return rows
     .filter((r) => !(Array.isArray(r.flags) && r.flags.includes("lost_key_provisional")))

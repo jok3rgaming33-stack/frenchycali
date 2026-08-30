@@ -40,6 +40,8 @@ export const staffMembers = pgTable("staff_members", {
   inviteUsed: boolean("invite_used").notNull().default(false),
   active: boolean("active").notNull().default(true),
   customerToken: text("customer_token"),
+  /** Boutique d'appartenance (compartimentage admin). */
+  shop: text("shop"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -405,6 +407,8 @@ export const broadcastNotifications = pgTable("broadcast_notifications", {
   // 'all' | JSON array of customer tokens
   recipients: text("recipients").notNull().default("all"),
   sentCount: integer("sent_count").notNull().default(0),
+  /** Boutique d'émission (null = legacy global). */
+  shop: text("shop"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 

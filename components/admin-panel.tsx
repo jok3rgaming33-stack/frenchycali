@@ -319,13 +319,13 @@ export function AdminPanel({
         ) : tab === "commandes" ? (
           <AdminOrdersRecap threads={initialThreads} />
         ) : tab === "utilisateurs" ? (
-          <AdminUsers initialUsers={initialUsers} />
+          <AdminUsers shop={shop} initialUsers={initialUsers} />
         ) : tab === "verifications" ? (
           <AdminVerifications initialVerifications={initialVerifications} />
         ) : tab === "recuperations" ? (
-          <AdminRecovery />
+          <AdminRecovery shop={shop} />
         ) : tab === "notifications" ? (
-          <AdminNotifications initialHistory={initialNotificationsHistory} users={initialUsers} />
+          <AdminNotifications shop={shop} initialHistory={initialNotificationsHistory} users={initialUsers} />
         ) : tab === "produits" ? (
           <AdminProducts />
         ) : tab === "promos" ? (
@@ -342,9 +342,9 @@ export function AdminPanel({
         ) : tab === "news" ? (
           <AdminNews />
         ) : tab === "connexions" ? (
-          <AdminLoginLogs initialLogs={initialLoginLogs} />
+          <AdminLoginLogs shop={shop} initialLogs={initialLoginLogs} />
         ) : tab === "staff" ? (
-          <AdminStaff initialStaff={initialStaff} />
+          <AdminStaff shop={shop} initialStaff={initialStaff} />
         ) : tab === "admins" ? (
           <AdminAdmins shop={shop} />
         ) : null}

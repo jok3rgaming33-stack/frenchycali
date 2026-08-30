@@ -1,10 +1,13 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { loginLogs, users } from "@/lib/db/schema"
-import { eq, desc } from "drizzle-orm"
+import { loginLogs, users, orderThreads } from "@/lib/db/schema"
+import { eq, desc, sql } from "drizzle-orm"
 import { headers } from "next/headers"
 import { isAdminAuthenticated } from "@/app/actions/admin-auth"
+import { orderThreadShopEq } from "@/lib/shop-scope"
+import type { ShopId } from "@/lib/shops"
+import { ensureOrderThreadsColumns } from "@/lib/db/ensure"
 
 // Géolocalise une IP via ip-api.com (gratuit, pas de clé requise, 45 req/min).
 async function geolocate(ip: string): Promise<{
@@ -96,12 +99,22 @@ export type LoginLogRow = {
   createdAt: Date | string
 }
 
-// Retourne les N dernières connexions pour le panel admin.
-export async function listLoginLogs(limit = 200): Promise<LoginLogRow[]> {
+// Retourne les N dernières connexions pour le panel admin (boutique uniquement).
+export async function listLoginLogs(shop: ShopId, limit = 200): Promise<LoginLogRow[]> {
   if (!(await isAdminAuthenticated())) return []
+  await ensureOrderThreadsColumns()
+  const shopCond = orderThreadShopEq(shop)
   const rows = await db
     .select()
     .from(loginLogs)
+    .where(
+      sql`${loginLogs.userToken} IN (
+        SELECT DISTINCT ${orderThreads.customerToken}
+        FROM ${orderThreads}
+        WHERE ${orderThreads.customerToken} IS NOT NULL
+          AND (${shopCond})
+      )`,
+    )
     .orderBy(desc(loginLogs.createdAt))
     .limit(limit)
   return rows

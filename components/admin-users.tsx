@@ -104,7 +104,13 @@ function FlagSelector({
   )
 }
 
-export function AdminUsers({ initialUsers }: { initialUsers: AdminUserRow[] }) {
+export function AdminUsers({
+  shop,
+  initialUsers,
+}: {
+  shop: import("@/lib/shops").ShopId
+  initialUsers: AdminUserRow[]
+}) {
   const [users, setUsers] = useState<AdminUserRow[]>(initialUsers)
   const [query, setQuery] = useState("")
   const [pendingId, setPendingId] = useState<number | null>(null)
@@ -224,6 +230,7 @@ export function AdminUsers({ initialUsers }: { initialUsers: AdminUserRow[] }) {
         customerName: contactUser.pseudo,
         customerToken: contactUser.token,
         message: `[Message de l'équipe] ${contactMsg.trim()}`,
+        shop,
       })
       if (res.ok) {
         setContactDone(true)
