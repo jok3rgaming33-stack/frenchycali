@@ -1154,14 +1154,45 @@ export async function reportParcelIssue(threadId: number, customerToken: string)
   return { ok: true as const }
 }
 
-// Supprime définitivement une commande (et ses messages, via cascade applicative).
+/** Supprime définitivement une commande / un fil de messagerie (+ messages). */
 export async function deleteOrderThread(threadId: number) {
-  if (!threadId) return { ok: false as const }
+  if (!threadId) return { ok: false as const, error: "ID invalide." }
+  try {
+    const { isAdminAuthenticated } = await import("@/app/actions/admin-auth")
+    if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized" }
+  } catch {
+    return { ok: false as const, error: "unauthorized" }
+  }
+
+  const [thread] = await db.select().from(orderThreads).where(eq(orderThreads.id, threadId)).limit(1)
+  if (!thread) return { ok: false as const, error: "Introuvable." }
+
   await db.delete(threadMessages).where(eq(threadMessages.threadId, threadId))
   await db.delete(orderThreads).where(eq(orderThreads.id, threadId))
+
   revalidatePath("/admin")
   revalidatePath("/messagerie")
+  if (thread.shop && isShopId(thread.shop)) revalidatePath(`/admin/${thread.shop}`)
   return { ok: true as const }
+}
+
+/** Suppression multiple (clôturées / messagerie). */
+export async function deleteOrderThreads(threadIds: number[]) {
+  const ids = Array.from(new Set(threadIds.filter((id) => Number.isFinite(id) && id > 0)))
+  if (ids.length === 0) return { ok: false as const, error: "Aucune sélection.", deleted: 0 }
+  try {
+    const { isAdminAuthenticated } = await import("@/app/actions/admin-auth")
+    if (!(await isAdminAuthenticated())) return { ok: false as const, error: "unauthorized", deleted: 0 }
+  } catch {
+    return { ok: false as const, error: "unauthorized", deleted: 0 }
+  }
+
+  let deleted = 0
+  for (const id of ids) {
+    const res = await deleteOrderThread(id)
+    if (res.ok) deleted++
+  }
+  return { ok: true as const, deleted }
 }
 
 // ─── Génération de commande par l'admin depuis la messagerie ────────────────

@@ -8,11 +8,12 @@ import {
   statusMeta,
   isClosedStatus,
   normalizeStatus,
+  isDiscussionStatus,
 } from "@/lib/order-status"
 import { listAllOrders, updateOrderStatus, sendAdminMessage, getThreadMessages } from "@/app/actions/order"
-import { confirmDeposit, markParcelShipped } from "@/app/actions/messaging"
+import { confirmDeposit, markParcelShipped, deleteOrderThread, deleteOrderThreads } from "@/app/actions/messaging"
 import { MessageBody } from "@/components/message-body"
-import { Send, RefreshCw, CheckCircle2, Loader2, Truck } from "lucide-react"
+import { Send, RefreshCw, CheckCircle2, Loader2, Truck, Trash2 } from "lucide-react"
 import { isParcelFulfillment, type ShopId } from "@/lib/shops"
 
 interface Props {
@@ -47,7 +48,12 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
   const [shipTracking, setShipTracking] = useState("")
   const [shipError, setShipError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const msgEndRef = useRef<HTMLDivElement>(null)
+
+  const canDeleteThreads = mode === "past" || mode === "messages"
 
   // Sync si le serveur renvoie de nouvelles commandes (navigation / revalidate)
   useEffect(() => {
@@ -133,6 +139,64 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
     }
   }
 
+  const handleDeleteThread = async (threadId: number) => {
+    const label = mode === "messages" ? "ce fil de messagerie" : "cette commande clôturée"
+    if (!window.confirm(`Supprimer définitivement ${label} #${threadId} ?\nCette action est irréversible.`)) return
+    setDeletingId(threadId)
+    try {
+      const res = await deleteOrderThread(threadId)
+      if (!res.ok) {
+        window.alert(res.error ?? "Suppression impossible.")
+        return
+      }
+      setThreads((prev) => prev.filter((t) => t.id !== threadId))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(threadId)
+        return next
+      })
+      if (selected?.id === threadId) {
+        setSelected(null)
+        setMessages([])
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const toggleSelect = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const label = mode === "messages" ? "fils" : "commandes"
+    if (!window.confirm(`Supprimer définitivement ${ids.length} ${label} ?\nIrréversible.`)) return
+    setBulkDeleting(true)
+    try {
+      const res = await deleteOrderThreads(ids)
+      if (res.ok) {
+        setThreads((prev) => prev.filter((t) => !selectedIds.has(t.id)))
+        if (selected && selectedIds.has(selected.id)) {
+          setSelected(null)
+          setMessages([])
+        }
+        setSelectedIds(new Set())
+      } else {
+        window.alert(res.error ?? "Suppression impossible.")
+      }
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   const handleMarkShipped = async () => {
     if (!selected || shipLoading) return
     setShipError(null)
@@ -188,6 +252,7 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
     if (mode === "orders") return !isParcelFulfillment(t.fulfillment) && !isClosedStatus(t.status)
     if (mode === "locker") return isParcelFulfillment(t.fulfillment) && !isClosedStatus(t.status)
     if (mode === "past") return isClosedStatus(t.status)
+    if (mode === "messages") return isDiscussionStatus(t.status) || t.status === "trk_token"
     return true
   })
 
@@ -198,7 +263,7 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
         <div style={{ borderRadius: 20, border: `1px solid ${BORDER}`, background: BG_CARD, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-              <div>
+              <div className="min-w-0 flex-1">
                 <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: ACCENT, fontSize: 12, marginBottom: 6, padding: 0 }}>← Retour</button>
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f5e8c7" }}>{selected.customerName}</h2>
                 <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(200,190,170,.75)", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{selected.summary}</p>
@@ -224,17 +289,49 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
                   </p>
                 )}
               </div>
-              <select
-                value={statusOptions.includes(selected.status) ? selected.status : normalizeStatus(selected.status)}
-                onChange={(e) => handleStatus(selected.id, e.target.value)}
-                disabled={statusLoading}
-                title={isParcelThread ? "Annulation uniquement — le reste du flux passe par les boutons" : undefined}
-                style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer", maxWidth: 180 }}
-              >
-                {statusOptions.map((s) => (
-                  <option key={s} value={s}>{statusMeta(s).label}</option>
-                ))}
-              </select>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                {!canDeleteThreads && (
+                  <select
+                    value={statusOptions.includes(selected.status) ? selected.status : normalizeStatus(selected.status)}
+                    onChange={(e) => handleStatus(selected.id, e.target.value)}
+                    disabled={statusLoading}
+                    title={isParcelThread ? "Annulation uniquement — le reste du flux passe par les boutons" : undefined}
+                    style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: "#1a1710", color: "#f5e8c7", fontSize: 12, cursor: "pointer", maxWidth: 180 }}
+                  >
+                    {statusOptions.map((s) => (
+                      <option key={s} value={s}>{statusMeta(s).label}</option>
+                    ))}
+                  </select>
+                )}
+                {canDeleteThreads && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteThread(selected.id)}
+                    disabled={deletingId === selected.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(239,68,68,.45)",
+                      background: "rgba(239,68,68,.12)",
+                      color: "#f87171",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      opacity: deletingId === selected.id ? 0.6 : 1,
+                    }}
+                  >
+                    {deletingId === selected.id ? (
+                      <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
+                    ) : (
+                      <Trash2 style={{ width: 14, height: 14 }} />
+                    )}
+                    Supprimer
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -377,41 +474,133 @@ export function VendorInbox({ initialThreads, mode, initialThreadId = null, shop
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Rechercher client, produit..."
           style={{ flex: 1, minWidth: 200, padding: "9px 14px", borderRadius: 999, border: `1px solid ${BORDER}`, background: "rgba(0,0,0,.4)", color: "#f5e8c7", fontSize: 13, outline: "none" }} />
         <button onClick={refresh} disabled={loading}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 999, border: `1px solid ${BORDER}`, background: "transparent", color: "rgba(200,190,170,.7)", cursor: "pointer", fontSize: 13 }}>
           <RefreshCw style={{ width: 14, height: 14, animation: loading ? "spin 1s linear infinite" : "none" }} /> Actualiser
         </button>
+        {canDeleteThreads && selectedIds.size > 0 && (
+          <button
+            type="button"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "9px 16px",
+              borderRadius: 999,
+              border: "1px solid rgba(239,68,68,.45)",
+              background: "rgba(239,68,68,.15)",
+              color: "#f87171",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 700,
+              opacity: bulkDeleting ? 0.6 : 1,
+            }}
+          >
+            {bulkDeleting ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Trash2 style={{ width: 14, height: 14 }} />}
+            Supprimer ({selectedIds.size})
+          </button>
+        )}
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
 
       {filtered.length === 0 ? (
-        <p style={{ textAlign: "center", padding: "60px 0", color: "rgba(200,190,170,.4)" }}>Aucune commande</p>
+        <p style={{ textAlign: "center", padding: "60px 0", color: "rgba(200,190,170,.4)" }}>
+          {mode === "messages" ? "Aucun fil de messagerie" : "Aucune commande"}
+        </p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 12 }}>
           {filtered.map((t) => {
             const st = statusMeta(t.status).label
             const isNew = normalizeStatus(t.status) === "en_attente"
+            const checked = selectedIds.has(t.id)
             return (
-              <button key={t.id} onClick={() => setSelected(t)}
-                style={{ textAlign: "left", padding: "16px 18px", borderRadius: 16, border: `1px solid ${isNew ? ACCENT : BORDER}`, background: BG_CARD, cursor: "pointer", transition: "all .2s",
-                  boxShadow: isNew ? `0 0 20px rgba(255,202,40,.15)` : "none" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: "#f5e8c7" }}>{t.customerName}</span>
-                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: isNew ? "rgba(255,202,40,.15)" : "rgba(255,255,255,.06)", color: isNew ? ACCENT : "rgba(200,190,170,.7)", fontWeight: 600 }}>{st}</span>
-                </div>
-                <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(200,190,170,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.products || t.summary}</p>
-                <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
-                  <span style={{ color: ACCENT, fontWeight: 700 }}>{t.total}€</span>
-                  <span style={{ color: "rgba(200,190,170,.6)" }}>{t.fulfillment}</span>
-                  {t.depositNotified && !t.depositConfirmed && (
-                    <span style={{ color: "#4ade80", fontWeight: 700 }}>Virement signalé</span>
-                  )}
-                  <span style={{ color: "rgba(200,190,170,.5)", marginLeft: "auto" }}>{new Date(t.createdAt).toLocaleDateString("fr-FR")}</span>
-                </div>
-              </button>
+              <div
+                key={t.id}
+                style={{
+                  position: "relative",
+                  textAlign: "left",
+                  padding: "16px 18px",
+                  borderRadius: 16,
+                  border: `1px solid ${checked ? "#f87171" : isNew ? ACCENT : BORDER}`,
+                  background: BG_CARD,
+                  transition: "all .2s",
+                  boxShadow: isNew ? `0 0 20px rgba(255,202,40,.15)` : "none",
+                }}
+              >
+                {canDeleteThreads && (
+                  <label
+                    style={{ position: "absolute", top: 12, left: 12, zIndex: 2, cursor: "pointer" }}
+                    onClick={(e) => toggleSelect(t.id, e)}
+                  >
+                    <input type="checkbox" checked={checked} readOnly style={{ width: 16, height: 16, accentColor: "#ef4444" }} />
+                  </label>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelected(t)}
+                  style={{
+                    width: "100%",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    padding: canDeleteThreads ? "0 0 0 22px" : 0,
+                    color: "inherit",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: "#f5e8c7" }}>{t.customerName}</span>
+                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: isNew ? "rgba(255,202,40,.15)" : "rgba(255,255,255,.06)", color: isNew ? ACCENT : "rgba(200,190,170,.7)", fontWeight: 600 }}>{st}</span>
+                  </div>
+                  <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(200,190,170,.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.products || t.summary}</p>
+                  <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap", alignItems: "center" }}>
+                    {mode !== "messages" && <span style={{ color: ACCENT, fontWeight: 700 }}>{t.total}€</span>}
+                    {mode !== "messages" && <span style={{ color: "rgba(200,190,170,.6)" }}>{t.fulfillment}</span>}
+                    {t.depositNotified && !t.depositConfirmed && (
+                      <span style={{ color: "#4ade80", fontWeight: 700 }}>Virement signalé</span>
+                    )}
+                    <span style={{ color: "rgba(200,190,170,.5)", marginLeft: "auto" }}>{new Date(t.createdAt).toLocaleDateString("fr-FR")}</span>
+                  </div>
+                </button>
+                {canDeleteThreads && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void handleDeleteThread(t.id)
+                    }}
+                    disabled={deletingId === t.id}
+                    title="Supprimer"
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      right: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 32,
+                      height: 32,
+                      borderRadius: 10,
+                      border: "1px solid rgba(239,68,68,.35)",
+                      background: "rgba(239,68,68,.1)",
+                      color: "#f87171",
+                      cursor: "pointer",
+                      opacity: deletingId === t.id ? 0.5 : 1,
+                    }}
+                  >
+                    {deletingId === t.id ? (
+                      <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
+                    ) : (
+                      <Trash2 style={{ width: 14, height: 14 }} />
+                    )}
+                  </button>
+                )}
+              </div>
             )
           })}
         </div>
